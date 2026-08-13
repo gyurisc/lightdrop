@@ -63,6 +63,26 @@ A command envelope, dispatcher and registry were written and then **deleted** be
 
 `/health` stays a plain HTTP GET, not a command — it is the bootstrap probe and must answer before any socket, pairing, or negotiation exists.
 
+## Discovery is presence, not trust
+
+Peers are **nearby strangers**. Three invariants that should fail review if broken:
+
+- **Nothing under `Discovery` may reference `IStateStore`.** A discovered peer must never reach
+  `state.json` or `trustedPeers`. Pairing crosses that boundary explicitly, not by inheriting a
+  path that already exists.
+- **Kestrel stays loopback-bound.** All peer metadata rides in mDNS TXT records, so discovery added
+  no LAN-reachable HTTP. `GET /api/peers` is for the local CLI.
+- **The registry stays bounded** (256, least-recently-seen eviction). Anyone on the link can invent
+  unlimited identifiers.
+
+Every TXT value is attacker-controlled. Sanitization happens **once at ingestion** in
+`PeerAnnouncement.TryCreate`, never at render time — otherwise the next consumer reintroduces the
+terminal-escape bug. Do not construct a `PeerAnnouncement` any other way.
+
+`MdnsPeerDiscoveryTransport` is intentionally untested: multicast cannot run in CI, and macOS drops
+it silently without the Local Network permission, so a test would hang rather than fail. **Every
+daemon test must pass a no-op or fake transport** or it will open real sockets.
+
 ## config.json vs state.json — never merge these
 
 In `%APPDATA%\LightDrop` / `~/.config/LightDrop`:
@@ -113,4 +133,5 @@ Prefer behavior over implementation detail: do not assert on the `.tmp` filename
 
 - macOS is CI-verified but has never been run by a human. `Environment.MachineName` on macOS yields `Something.local` rather than a friendly name, which undercuts the README's example output.
 - macOS release binaries need an executable bit and a Gatekeeper story (codesign/notarize, or a documented `xattr` workaround). CI does not publish.
-- The CLI cannot override the data directory, so two daemons cannot yet run on one machine — needed for testing discovery.
+- Discovery is verified between two daemons on one Windows machine, **not yet between two real machines**, and not at all on macOS by a human.
+- The mDNS library is a community fork of a project abandoned in 2019, and its `Common.Logging` dependency required a targeted trim suppression (`docs/DECISIONS.md` #16).

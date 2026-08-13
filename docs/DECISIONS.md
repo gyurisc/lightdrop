@@ -112,6 +112,73 @@ The default umask produces `0644` — world-readable inside a `755` macOS home d
 
 ---
 
-### 14. `.sln`, not `.slnx`
+### 14. Discovery is presence only; Kestrel stays on loopback
+
+All peer metadata rides in mDNS TXT records, so M1 added **no LAN-reachable HTTP at all**.
+
+This is not security theatre. mDNS is connectionless UDP: an observer can spoof TXT content but
+cannot open a TCP session, cannot reach ASP.NET Core parsing code, and cannot hit an endpoint added
+later by someone who forgot an authorization check. A LAN-bound Kestrel turns "a bug in a future
+endpoint" into "the whole network can trigger it."
+
+`GET /api/peers` is loopback-only, for the CLI. Pairing is where a peer-to-peer LAN endpoint gets
+opened deliberately — that is when authenticated communication is actually needed.
+
+---
+
+### 15. mDNS library: `Makaretu.Dns.Multicast.New`
+
+The .NET mDNS ecosystem is thin. `Tmds.MDns` and `Zeroconf` are **browse-only** and cannot
+advertise, which disqualifies both. The only maintained option that does both is a community fork
+of a project whose original author stopped releasing in 2019.
+
+**Accepted with eyes open.** Do not hand-roll mDNS. If this fork dies, the realistic options are
+forking it ourselves or using platform APIs (`dns-sd` on macOS), not switching packages.
+
+---
+
+### 16. Trim suppression for `Common.Logging`
+
+The mDNS library depends transitively on `Common.Logging`, a .NET Standard 1.3 shim with no trim
+annotations. It **broke the trimmed publish outright** (IL2104 → NETSDK1144).
+
+`NoWarn IL2104` suppresses only the per-assembly rollup, so IL2026/IL3050 stay fatal for our own
+code, and the affected assemblies are rooted so nothing inside them is removed. Verified at
+runtime: the trimmed binary performs real discovery.
+
+**Cost:** 18.3 MB → 18.8 MB. Cheap for the capability.
+
+---
+
+### 17. Advertise the real SRV port, not 0
+
+DNS-SD requires a port. The advertised port is unreachable (loopback bind), but port `0` is not the
+DNS-SD "no service" signal — `Target="."` is — and zero breaks well-behaved clients for no security
+gain. Documented as not an authorization boundary instead of encoded as one.
+
+---
+
+### 18. DNS-SD instance name is the device id
+
+Two machines can share a device name; identifiers cannot realistically collide. This avoids the
+library's DNS-SD name-conflict probing entirely, and avoids making a human-readable name the
+browsable label. Cost: `dns-sd -B` shows a GUID rather than a friendly name. Accepted.
+
+---
+
+### 19. The broadcast device id is a correlation token
+
+The identifier is stable and announced on every network the machine joins, so a passive observer
+can correlate the device across locations. Inherent to mDNS discovery, and the same tradeoff
+AirDrop and network printers make — but stated rather than shipped silently.
+
+Not a security defect: knowing the identifier does not help forge a pairing, which will pin to key
+material. **Open question for pairing:** whether the device id stays an independent random GUID or
+becomes a key fingerprint. Answer it deliberately on day one of that milestone rather than
+defaulting to what already exists.
+
+---
+
+### 20. `.sln`, not `.slnx`
 
 .NET 10 defaults to the newer `.slnx`. Classic format chosen for tooling compatibility. Worth revisiting — `.slnx` has no GUIDs and no merge conflicts.

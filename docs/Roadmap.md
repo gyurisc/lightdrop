@@ -12,22 +12,45 @@ One milestone at a time. Each ships working, tested software. Nothing starts bef
 - Core and Daemon test suites; CI on Windows and macOS
 - Single-file publish, trimmed, zero trim warnings
 
-## M1 — Local peer discovery
+## M1 — Local peer discovery ✅ (Windows; macOS unverified by hand)
 
 **Goal:** two machines on a LAN see each other with no configuration.
 
-- mDNS advertisement of `_lightdrop._tcp.local`
-- mDNS browsing, with TXT metadata: name, id, platform, protocol version, capabilities, port
-- In-memory peer registry with liveness/expiry
-- `GET /api/peers`
-- `lightdrop peers`
-- Manual fallback for networks that block multicast
+- mDNS advertisement and browsing of `_lightdrop._tcp.local`, IPv4 only
+- In-memory peer registry: expiry, deduplication, self-filtering, bounded at 256
+- `GET /api/peers` (loopback) and `lightdrop peers`
+- `LIGHTDROP_DATA_DIR` so two daemons can run on one machine
 
-**Requires a decision first:** the daemon must bind beyond loopback to be discoverable, and there is no pairing yet. Either discovery is read-only (advertise and browse, accept no commands) or M2 lands first. Read-only discovery is the smaller step.
+**Resolved:** discovery is read-only presence. Kestrel stays loopback-bound, all metadata rides in
+mDNS TXT records, and no LAN-reachable HTTP was added. Pairing is where a peer-to-peer LAN endpoint
+is opened deliberately, because that is when authenticated communication is actually needed.
 
-**Also needed:** a data-directory override so two daemons can run on one machine without fighting over a single identity. `LightDropDaemon` already takes one; the CLI does not expose it yet.
+**Deferred to M2:** the manual direct-dial fallback for multicast-blocked networks. Dialling a
+manually entered peer requires that peer to accept LAN traffic, which reopens the question M1
+closed. `lightdrop peers` explains the likely causes when it finds nothing.
 
-**Known risks:** multicast blocked on corporate networks; macOS firewall prompts; sleeping devices leaving stale entries; hostnames on macOS surfacing as `Krisztians-MacBook-Air.local` rather than a friendly name.
+### Manual verification
+
+Automated tests cannot cover multicast: CI runners cannot route it, and macOS drops it silently
+without the Local Network permission, so a test would hang rather than fail. These must be done by
+hand.
+
+- [x] Two daemons on one Windows machine (`LIGHTDROP_PORT`, `LIGHTDROP_DATA_DIR`) discover each
+      other; neither lists itself
+- [x] Trimmed single-file binary runs discovery without a reflection failure
+- [ ] **Two real machines on the same LAN discover each other** — the actual milestone claim
+- [ ] macOS: the Local Network permission prompt appears; denying it leaves the daemon running and
+      the peer list empty rather than hanging
+- [ ] Windows: behaviour with the Defender Firewall prompt allowed and denied
+- [ ] Ctrl+C on one machine removes it from the other's list promptly (goodbye packet)
+- [ ] Sleeping a machine ages it out within ~180s rather than instantly or never
+- [ ] A multicast-blocking network: daemon still starts, `/health` still works, peers list empty
+- [ ] macOS device name shows the friendly name, not `Something.local`
+- [ ] A machine with VPN/Hyper-V/WSL adapters up still discovers
+
+**Known risks:** macOS Local Network permission fails silently and cannot be reset with `tccutil`;
+`Environment.MachineName` on macOS yields `Something.local`; the mDNS library is a community fork
+of a project abandoned in 2019.
 
 ## M2 — Secure pairing
 

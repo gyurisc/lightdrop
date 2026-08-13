@@ -76,13 +76,75 @@ Open question for that milestone: a multi-GB transfer must not head-of-line bloc
 
 No gRPC, WebRTC, or custom binary protocol without a demonstrated need.
 
-## Direction: discovery
+## Implemented: discovery
 
-- mDNS / Zeroconf, service type `_lightdrop._tcp.local`
-- TXT metadata: device name, id, platform, protocol version, capabilities, port
-- A manual fallback is **required** — corporate networks routinely block multicast
+**Discovery is presence, not trust.** A discovered peer is a nearby stranger. Nothing about it is
+verified, nothing is persisted, and nothing can be sent to it.
 
-Use a mature library. Do not hand-roll mDNS.
+Service type `_lightdrop._tcp.local`, IPv4 only.
+
+**Instance name is the device id**, not the device name. Two machines can share a name, and an
+identifier collision is not realistic — which sidesteps DNS-SD name-conflict probing entirely. It
+also avoids making a human-readable name the browsable label. The friendly name travels in TXT,
+and that is what `lightdrop peers` renders. A generic browser such as `dns-sd -B` will show a
+GUID; that is accepted.
+
+### TXT record
+
+| Key | Value | Notes |
+|---|---|---|
+| `txtvers` | `1` | Shape of this record, independent of `pv` |
+| `id` | device id | |
+| `pv` | protocol version | |
+| `plat` | `windows` \| `macos` \| `linux` | |
+| `name` | device name | UTF-8, sanitized and bounded on receipt |
+| `cap` | comma-separated | **Omitted entirely while empty** — in DNS-SD an absent key differs from an empty one |
+
+About 75 bytes, well inside the 255-byte per-string and ~1300-byte total budgets.
+
+**Deliberately excluded**: the username, filesystem paths, download folder, config location,
+anything key-shaped, and the **application version**. `protocolVersion` is the compatibility gate,
+so broadcasting an exact build number would hand a passive observer a version fingerprint for no
+product benefit. `version` remains available on loopback via `/health`.
+
+### The SRV port is not an authorization boundary
+
+DNS-SD requires a port in the SRV record, so the daemon's real port is advertised. **It is not
+reachable from the network** — Kestrel binds loopback only — and it does not mean "this peer
+accepts connections". Do not treat it as one until pairing exists. Port `0` was rejected: the
+DNS-SD signal for "no service here" is `Target="."`, not port zero, and zero breaks well-behaved
+clients for no security gain.
+
+### Untrusted input
+
+Every TXT value is attacker-controlled. On ingestion LightDrop strips Unicode categories `Cc`,
+`Cf`, `Zl` and `Zp` — control characters, bidi overrides, zero-width characters — before anything
+reaches the registry, so a hostile device name cannot drive a terminal. Fields are length-bounded,
+the registry is capped at 256 peers with least-recently-seen eviction, and a peer whose name
+sanitizes to nothing is displayed as `Peer <id prefix>`. Sanitization happens **once at the
+boundary**, not at render time, so every consumer inherits it.
+
+### Liveness
+
+Peers expire after **180 seconds** without being heard from — three times the announcement
+interval, deliberately independent of the DNS TTL. The standard 75-minute PTR TTL would leave a
+sleeping laptop listed for an hour, and a device that sleeps or drops off Wi-Fi never sends a
+goodbye. A goodbye (TTL 0) evicts immediately. Expiry is computed on read; there is no sweep timer.
+
+### Privacy: the device id is broadcast
+
+The identifier is stable and announced on every network the machine joins. A passive observer who
+sees it in two places can correlate the device across locations. This is inherent to mDNS
+discovery and is the same tradeoff AirDrop and network printers already make, but it is an
+accepted cost, stated here rather than shipped silently. The device name is broadcast too — set
+`deviceName` in `config.json` if the machine name is revealing.
+
+### When multicast is blocked
+
+Discovery fails **silently**: an empty peer list, no error. Corporate and guest networks routinely
+block multicast. `lightdrop peers` therefore explains the likely causes when it finds nothing.
+A manual direct-dial fallback is deferred to pairing, because dialling a manually entered peer
+requires that peer to accept LAN traffic.
 
 ## Direction: trust
 

@@ -51,6 +51,29 @@ There is intentionally **no `LightDrop.Infrastructure` project**. Extract one wh
 
 `DeviceIdentityProvider` and `HealthService` are **concrete classes**. Each had exactly one implementation and no test double; the interfaces bought nothing. Adding an interface because "services get interfaces" is the pattern to avoid — the next contributor copies it into an in-memory peer registry that has no boundary to abstract.
 
+## Discovery
+
+Split along the same line as everything else — logic in Core, I/O in Daemon.
+
+**Core** owns `PeerAnnouncement` (what a peer claims, after sanitizing), `UntrustedText` (the
+ingestion chokepoint), and `PeerRegistry` (add, refresh, expire, deduplicate, self-filter, bound).
+All of it is testable with a fake clock and no network.
+
+**Daemon** owns `IPeerDiscoveryTransport` and its mDNS implementation, plus the network-interface
+filter that excludes Hyper-V, WSL, Docker, VPN, `awdl0` and `utun` adapters.
+
+`IPeerDiscoveryTransport` is a genuine port, not habit. Multicast cannot be exercised in tests: CI
+runners cannot route it, and macOS drops it **silently** without the Local Network permission, so a
+test would hang rather than fail. Every daemon test passes a no-op or fake transport; without the
+seam, the whole suite would start opening multicast sockets.
+
+`MdnsPeerDiscoveryTransport` is deliberately **not** unit tested — that would mean mocking the
+library's internals or using real multicast. It is verified by hand; see `docs/Roadmap.md`.
+
+**The registry has no route to `IStateStore`, by design.** A discovered peer is a stranger, and
+pairing must cross that boundary explicitly and under review rather than inherit a path that
+already exists. Adding a state-store reference to anything under `Discovery` should fail review.
+
 ## Storage
 
 Both files live in `%APPDATA%\LightDrop` (Windows) or `~/.config/LightDrop` (macOS).

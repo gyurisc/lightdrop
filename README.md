@@ -27,13 +27,21 @@ LightDrop makes nearby devices feel like they're part of the same workstation.
 
 ## Status
 
-**Early development.** The daemon runs and reports its identity; nothing is transferred yet.
-See `docs/Roadmap.md` for what lands when.
+**Early development.** Devices discover each other on the local network. Nothing is transferred
+yet, and no peer is trusted. See `docs/Roadmap.md` for what lands when.
 
 ```bash
 lightdrop daemon   # run the daemon
 lightdrop health   # ask it who it is
+lightdrop peers    # list nearby devices
 ```
+
+Discovered peers are **nearby strangers**: presence, not trust. Nothing is sent to them and nothing
+is stored about them. Pairing comes next.
+
+On first run, macOS asks for Local Network permission and Windows shows a Defender Firewall prompt.
+Discovery does not work until these are allowed, and networks that block multicast — many corporate
+and guest networks — prevent it entirely.
 
 ## Goals
 

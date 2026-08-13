@@ -25,7 +25,17 @@ Moving a screenshot from your desktop to your work laptop shouldn't require:
 
 LightDrop makes nearby devices feel like they're part of the same workstation.
 
-## Features
+## Status
+
+**Early development.** The daemon runs and reports its identity; nothing is transferred yet.
+See `docs/Roadmap.md` for what lands when.
+
+```bash
+lightdrop daemon   # run the daemon
+lightdrop health   # ask it who it is
+```
+
+## Goals
 
 - Automatic device discovery
 - Local network only
@@ -36,7 +46,9 @@ LightDrop makes nearby devices feel like they're part of the same workstation.
 
 ## Planned
 
-- ✅ File transfer
+- Peer discovery
+- Secure pairing
+- File transfer
 - Clipboard text
 - Clipboard images
 - Screenshots
@@ -86,6 +98,7 @@ The file immediately appears on the destination machine.
 - Architecture: `docs/Architecture.md`
 - Protocol: `docs/Protocol.md`
 - Roadmap: `docs/Roadmap.md`
+- Decisions: `docs/DECISIONS.md`
 
 ## License
 

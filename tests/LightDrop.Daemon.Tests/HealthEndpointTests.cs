@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using LightDrop.Core;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
+using LightDrop.Daemon.Discovery;
 using LightDrop.Daemon.Tests.TestSupport;
 using Microsoft.AspNetCore.Builder;
 
@@ -25,7 +26,8 @@ public sealed class HealthEndpointTests
         using var directory = new TempDataDirectory();
         var endpoint = new DaemonEndpointOptions { Host = "127.0.0.1", Port = FreeTcpPort.Get() };
 
-        await using var app = LightDropDaemon.Create(endpoint, directory.FullPath);
+        // A no-op transport keeps the test off real multicast sockets; see FakePeerDiscoveryTransport.
+        await using var app = LightDropDaemon.Create(endpoint, directory.FullPath, new NoOpPeerDiscoveryTransport());
         await app.StartAsync(CancellationToken.None);
 
         using var client = new HttpClient { BaseAddress = endpoint.ClientAddress };
@@ -56,7 +58,8 @@ public sealed class HealthEndpointTests
         using var directory = new TempDataDirectory();
         var endpoint = new DaemonEndpointOptions { Host = "127.0.0.1", Port = FreeTcpPort.Get() };
 
-        await using var app = LightDropDaemon.Create(endpoint, directory.FullPath);
+        // A no-op transport keeps the test off real multicast sockets; see FakePeerDiscoveryTransport.
+        await using var app = LightDropDaemon.Create(endpoint, directory.FullPath, new NoOpPeerDiscoveryTransport());
         await app.StartAsync(CancellationToken.None);
 
         using var client = new HttpClient { BaseAddress = endpoint.ClientAddress };
@@ -79,7 +82,8 @@ public sealed class HealthEndpointTests
         directory.WriteConfig("""{ "deviceName": "Work Laptop" }""");
         var endpoint = new DaemonEndpointOptions { Host = "127.0.0.1", Port = FreeTcpPort.Get() };
 
-        await using var app = LightDropDaemon.Create(endpoint, directory.FullPath);
+        // A no-op transport keeps the test off real multicast sockets; see FakePeerDiscoveryTransport.
+        await using var app = LightDropDaemon.Create(endpoint, directory.FullPath, new NoOpPeerDiscoveryTransport());
         await app.StartAsync(CancellationToken.None);
 
         using var client = new HttpClient { BaseAddress = endpoint.ClientAddress };

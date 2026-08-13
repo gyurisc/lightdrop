@@ -1,4 +1,5 @@
 using LightDrop.Core.Configuration;
+using LightDrop.Daemon.Discovery;
 using LightDrop.Daemon.Tests.TestSupport;
 
 namespace LightDrop.Daemon.Tests;
@@ -14,7 +15,8 @@ public sealed class DaemonLifecycleTests
         var endpoint = new DaemonEndpointOptions { Host = "127.0.0.1", Port = FreeTcpPort.Get() };
         using var cancellation = new CancellationTokenSource();
 
-        var run = LightDropDaemon.RunAsync(endpoint, directory.FullPath, cancellation.Token);
+        var run = LightDropDaemon.RunAsync(
+            endpoint, directory.FullPath, cancellation.Token, new NoOpPeerDiscoveryTransport());
 
         using var client = new HttpClient { BaseAddress = endpoint.ClientAddress, Timeout = TimeSpan.FromSeconds(2) };
 
@@ -45,6 +47,7 @@ public sealed class DaemonLifecycleTests
         var endpoint = new DaemonEndpointOptions { Host = "not-an-ip-address", Port = 5533 };
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await LightDropDaemon.RunAsync(endpoint, directory.FullPath, CancellationToken.None));
+            async () => await LightDropDaemon.RunAsync(
+                endpoint, directory.FullPath, CancellationToken.None, new NoOpPeerDiscoveryTransport()));
     }
 }

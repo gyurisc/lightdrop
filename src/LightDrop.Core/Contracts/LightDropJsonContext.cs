@@ -16,6 +16,7 @@ namespace LightDrop.Core.Contracts;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     WriteIndented = true)]
 [JsonSerializable(typeof(HealthResponse))]
+[JsonSerializable(typeof(IReadOnlyList<DiscoveredPeer>))]
 [JsonSerializable(typeof(LightDropConfig))]
 [JsonSerializable(typeof(LightDropState))]
 public partial class LightDropJsonContext : JsonSerializerContext;

@@ -12,7 +12,21 @@
     <!-- Applied on publish; see README for the publish commands. -->
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- The mDNS library depends transitively on Common.Logging, a .NET Standard 1.3 shim that is
+         not trim-annotated and fails the trimmer outright. IL2104 is the per-assembly rollup for
+         that; suppressing only it keeps IL2026/IL3050 fatal for our own code. The affected
+         assemblies are rooted below so nothing inside them is removed. See docs/DECISIONS.md. -->
+    <NoWarn>$(NoWarn);IL2104</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Kept whole rather than trimmed: these use reflection the trimmer cannot see, so removing
+         anything inside them risks a runtime failure that no build-time check would catch. -->
+    <TrimmerRootAssembly Include="Common.Logging" />
+    <TrimmerRootAssembly Include="Common.Logging.Core" />
+    <TrimmerRootAssembly Include="Makaretu.Dns" />
+    <TrimmerRootAssembly Include="Makaretu.Dns.Multicast.New" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\LightDrop.Core\LightDrop.Core.csproj" />

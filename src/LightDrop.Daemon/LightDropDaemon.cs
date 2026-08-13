@@ -2,6 +2,9 @@ using System.Net;
 using LightDrop.Core;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
+using LightDrop.Core.Devices;
+using LightDrop.Core.Discovery;
+using LightDrop.Daemon.Discovery;
 using LightDrop.Daemon.Endpoints;
 using LightDrop.Daemon.Infrastructure;
 using Microsoft.AspNetCore.Builder;
@@ -26,7 +29,16 @@ public static class LightDropDaemon
     /// </summary>
     /// <param name="endpoint">Where to bind. Resolved from the environment when null.</param>
     /// <param name="dataDirectory">Overrides the config and state location. For tests.</param>
-    public static WebApplication Create(DaemonEndpointOptions? endpoint = null, string? dataDirectory = null)
+    /// <param name="peerDiscoveryTransport">
+    /// Overrides how peers are discovered. Tests pass a
+    /// <see cref="NoOpPeerDiscoveryTransport"/> so the suite never opens a multicast socket —
+    /// multicast cannot be routed on CI runners and fails silently on macOS without the Local
+    /// Network permission.
+    /// </param>
+    public static WebApplication Create(
+        DaemonEndpointOptions? endpoint = null,
+        string? dataDirectory = null,
+        IPeerDiscoveryTransport? peerDiscoveryTransport = null)
     {
         endpoint ??= DaemonEndpointOptions.FromEnvironment();
         endpoint.Validate();
@@ -38,10 +50,11 @@ public static class LightDropDaemon
 
         ConfigureLogging(builder);
         ConfigureKestrel(builder, endpoint);
-        ConfigureServices(builder, endpoint, dataDirectory);
+        ConfigureServices(builder, endpoint, dataDirectory, peerDiscoveryTransport);
 
         var app = builder.Build();
         app.MapHealthEndpoints();
+        app.MapPeerEndpoints();
         return app;
     }
 
@@ -57,9 +70,10 @@ public static class LightDropDaemon
     public static async Task RunAsync(
         DaemonEndpointOptions? endpoint = null,
         string? dataDirectory = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IPeerDiscoveryTransport? peerDiscoveryTransport = null)
     {
-        var app = Create(endpoint, dataDirectory);
+        var app = Create(endpoint, dataDirectory, peerDiscoveryTransport);
         await using (app.ConfigureAwait(false))
         {
             await app.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -99,7 +113,8 @@ public static class LightDropDaemon
     private static void ConfigureServices(
         WebApplicationBuilder builder,
         DaemonEndpointOptions endpoint,
-        string? dataDirectory)
+        string? dataDirectory,
+        IPeerDiscoveryTransport? peerDiscoveryTransport)
     {
         var services = builder.Services;
 
@@ -120,9 +135,30 @@ public static class LightDropDaemon
 
         services.AddLightDropCore();
 
-        // Command handlers register here as they are built. The health endpoint's capability
-        // list is projected from them, so no separate list needs maintaining.
+        // Discovered peers live here and nowhere else — in memory, for this process only. The
+        // registry has no route to IStateStore by design: a discovered peer is a stranger, and
+        // pairing must cross that boundary explicitly rather than inherit an existing path.
+        services.AddSingleton(provider =>
+        {
+            // Resolved synchronously at startup so the registry can filter out this device's own
+            // announcements, which multicast loops straight back. Safe here: there is no
+            // synchronization context to deadlock against, and this is one small file read, once.
+            var identity = provider.GetRequiredService<DeviceIdentityProvider>()
+                .GetAsync().AsTask().GetAwaiter().GetResult();
 
+            return new PeerRegistry(TimeProvider.System, identity.Id);
+        });
+
+        if (peerDiscoveryTransport is not null)
+        {
+            services.AddSingleton(peerDiscoveryTransport);
+        }
+        else
+        {
+            services.AddSingleton<IPeerDiscoveryTransport, MdnsPeerDiscoveryTransport>();
+        }
+
+        services.AddHostedService<PeerDiscoveryService>();
         services.AddHostedService<DaemonLifetimeService>();
 
         services.ConfigureHttpJsonOptions(json =>

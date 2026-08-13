@@ -35,6 +35,7 @@ services.AddHttpClient();
 
 services.AddSingleton<ICliCommand, DaemonCommand>();
 services.AddSingleton<ICliCommand, HealthCommand>();
+services.AddSingleton<ICliCommand, PeersCommand>();
 
 await using var provider = services.BuildServiceProvider();
 
@@ -92,4 +93,5 @@ static void PrintUsage(IEnumerable<ICliCommand> commands)
     Console.WriteLine("Environment:");
     Console.WriteLine($"  {DaemonEndpointOptions.HostEnvironmentVariable,-16}listen address (default {DaemonEndpointOptions.DefaultHost})");
     Console.WriteLine($"  {DaemonEndpointOptions.PortEnvironmentVariable,-16}listen port (default {DaemonEndpointOptions.DefaultPort})");
+    Console.WriteLine($"  {DaemonCommand.DataDirectoryEnvironmentVariable,-16}config and state location");
 }

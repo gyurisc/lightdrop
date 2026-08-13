@@ -17,6 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Makaretu.Dns.Multicast.New" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\LightDrop.Core\LightDrop.Core.csproj" />
   </ItemGroup>
 

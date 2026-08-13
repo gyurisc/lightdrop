@@ -7,6 +7,10 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <!-- The only maintained .NET mDNS library that can both advertise and browse; Tmds.MDns and
+         Zeroconf are browse-only. A community fork of a project whose original author stopped
+         releasing in 2019 — see docs/DECISIONS.md. -->
+    <PackageVersion Include="Makaretu.Dns.Multicast.New" Version="0.38.0" />
   </ItemGroup>
 
   <ItemGroup Label="Test">

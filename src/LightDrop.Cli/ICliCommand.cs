@@ -8,8 +8,8 @@ namespace LightDrop.Cli;
 /// dispatch is a dictionary lookup, it adds no dependency, and it keeps commands resolvable from
 /// DI. Revisit when a command needs real option parsing — <c>send</c> is the likely trigger.
 /// <para>
-/// Not to be confused with <see cref="Core.Protocol.ICommandHandler"/>: that is a command a peer
-/// sends over the wire, this is a verb the user types.
+/// This is a verb the <em>user types</em>. When the wire protocol gains command handlers, those
+/// are a separate concept — see <c>docs/Protocol.md</c>.
 /// </para>
 /// </remarks>
 public interface ICliCommand

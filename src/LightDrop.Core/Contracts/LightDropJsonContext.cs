@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using LightDrop.Core.Configuration;
-using LightDrop.Core.Protocol;
 
 namespace LightDrop.Core.Contracts;
 
@@ -19,6 +18,4 @@ namespace LightDrop.Core.Contracts;
 [JsonSerializable(typeof(HealthResponse))]
 [JsonSerializable(typeof(LightDropConfig))]
 [JsonSerializable(typeof(LightDropState))]
-[JsonSerializable(typeof(CommandEnvelope))]
-[JsonSerializable(typeof(CommandResult))]
 public partial class LightDropJsonContext : JsonSerializerContext;

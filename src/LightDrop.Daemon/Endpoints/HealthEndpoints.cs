@@ -1,9 +1,9 @@
+using LightDrop.Core.Contracts;
 using LightDrop.Core.Health;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
-using LightDrop.Core.Contracts;
 
 namespace LightDrop.Daemon.Endpoints;
 
@@ -16,7 +16,7 @@ internal static class HealthEndpoints
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/health", async Task<Ok<HealthResponse>> (
-                IHealthService healthService,
+                HealthService healthService,
                 CancellationToken cancellationToken) =>
             TypedResults.Ok(await healthService.GetHealthAsync(cancellationToken).ConfigureAwait(false)))
             .WithName("Health");

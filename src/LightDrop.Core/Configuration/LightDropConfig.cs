@@ -17,6 +17,9 @@ public sealed record LightDropConfig
     /// <summary>The name peers see. Defaults to the machine name when unset.</summary>
     public string? DeviceName { get; init; }
 
-    /// <summary>Where received files land. Defaults to a platform-specific downloads folder when unset.</summary>
+    /// <summary>
+    /// Where received files land. Nothing reads this yet; the default is resolved by the
+    /// infrastructure layer when file transfer lands.
+    /// </summary>
     public string? DownloadFolder { get; init; }
 }

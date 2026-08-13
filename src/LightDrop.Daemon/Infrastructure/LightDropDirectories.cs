@@ -8,7 +8,9 @@ namespace LightDrop.Daemon.Infrastructure;
 /// unaware of <see cref="Environment.SpecialFolder"/> and platform layout entirely.
 /// <para>
 /// <see cref="Environment.SpecialFolder.ApplicationData"/> maps to <c>%APPDATA%</c> on Windows
-/// and <c>~/.config</c> on macOS, which is the conventional home on both.
+/// and <c>~/.config</c> on macOS — .NET applies the same XDG-style mapping to macOS as to Linux
+/// rather than using <c>~/Library/Application Support</c>. That matches what most cross-platform
+/// developer CLIs do, so it is the convention worth following here.
 /// </para>
 /// </remarks>
 public static class LightDropDirectories
@@ -18,11 +20,5 @@ public static class LightDropDirectories
     /// <summary>Where <c>config.json</c> and <c>state.json</c> live.</summary>
     public static string Data { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create),
-        FolderName);
-
-    /// <summary>Where received files land when config does not say otherwise.</summary>
-    public static string DefaultDownloads { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        "Downloads",
         FolderName);
 }

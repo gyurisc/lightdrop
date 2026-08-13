@@ -1,7 +1,6 @@
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Devices;
 using LightDrop.Core.Health;
-using LightDrop.Core.Protocol;
 using LightDrop.Core.Tests.Fakes;
 
 namespace LightDrop.Core.Tests;
@@ -10,11 +9,8 @@ public sealed class HealthServiceTests
 {
     private static HealthService CreateService(
         LightDropConfig? config = null,
-        LightDropState? state = null,
-        params ICommandHandler[] handlers) =>
-        new(
-            new DeviceIdentityProvider(new InMemoryStateStore(state), new InMemoryConfigStore(config)),
-            new CommandRegistry(handlers));
+        LightDropState? state = null) =>
+        new(new DeviceIdentityProvider(new InMemoryStateStore(state), new InMemoryConfigStore(config)));
 
     [Fact]
     public async Task ReportsIdentityFromTheProvider()
@@ -57,23 +53,12 @@ public sealed class HealthServiceTests
     [Fact]
     public async Task AdvertisesNoCapabilitiesWhileNoCommandsAreImplemented()
     {
+        // The daemon accepts no commands yet and says so honestly. When handlers exist this
+        // must become a projection of the registered set, not a hand-maintained list.
         var service = CreateService();
 
         var health = await service.GetHealthAsync(CancellationToken.None);
 
         Assert.Empty(health.Capabilities);
-    }
-
-    [Fact]
-    public async Task AdvertisesRegisteredCommandsAsCapabilities()
-    {
-        // This is the contract that lets the protocol grow additively: a peer discovers what
-        // this device supports without a protocol version bump.
-        var service = CreateService(
-            handlers: [new StubCommandHandler("file.send"), new StubCommandHandler("clipboard.text")]);
-
-        var health = await service.GetHealthAsync(CancellationToken.None);
-
-        Assert.Equal(["clipboard.text", "file.send"], health.Capabilities);
     }
 }

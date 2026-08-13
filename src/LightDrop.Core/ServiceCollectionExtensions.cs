@@ -1,6 +1,5 @@
 using LightDrop.Core.Devices;
 using LightDrop.Core.Health;
-using LightDrop.Core.Protocol;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LightDrop.Core;
@@ -19,12 +18,10 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddSingleton<IDeviceIdentityProvider, DeviceIdentityProvider>();
-        services.AddSingleton<IHealthService, HealthService>();
-
-        // Resolves every ICommandHandler registered by any layer. None yet.
-        services.AddSingleton<CommandRegistry>();
-        services.AddSingleton<ICommandDispatcher, CommandDispatcher>();
+        // Registered as concrete types: each has a single implementation and nothing substitutes
+        // them, including in tests. Interfaces here are reserved for genuine ports.
+        services.AddSingleton<DeviceIdentityProvider>();
+        services.AddSingleton<HealthService>();
 
         return services;
     }

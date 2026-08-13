@@ -3,17 +3,21 @@ using LightDrop.Core.Configuration;
 namespace LightDrop.Core.Devices;
 
 /// <summary>
-/// Get-or-create identity resolution over the config and state ports.
+/// Resolves this device's identity, creating and persisting it on first use.
 /// </summary>
 /// <remarks>
-/// The logic lives in Core and the file I/O lives behind <see cref="IStateStore"/> and
-/// <see cref="IConfigStore"/>, which is what keeps this class testable without touching
-/// a real filesystem.
+/// The get-or-create logic lives in Core and the file I/O lives behind <see cref="IStateStore"/>
+/// and <see cref="IConfigStore"/>, which is what keeps this class testable without touching a
+/// real filesystem.
 /// </remarks>
-public sealed class DeviceIdentityProvider(IStateStore stateStore, IConfigStore configStore) : IDeviceIdentityProvider
+public sealed class DeviceIdentityProvider(IStateStore stateStore, IConfigStore configStore)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private DeviceIdentity? _cached;
+
+    // volatile: read on the fast path outside the semaphore. The .NET memory model already rules
+    // out observing a partially constructed DeviceIdentity, but this guarantees the write becomes
+    // visible to other threads promptly on weaker architectures — the CLI ships an arm64 macOS RID.
+    private volatile DeviceIdentity? _cached;
 
     public async ValueTask<DeviceIdentity> GetAsync(CancellationToken cancellationToken = default)
     {

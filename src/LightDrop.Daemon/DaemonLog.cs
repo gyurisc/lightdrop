@@ -30,10 +30,4 @@ internal static partial class DaemonLog
         Level = LogLevel.Information,
         Message = "LightDrop daemon shutting down.")]
     public static partial void Stopping(ILogger logger);
-
-    [LoggerMessage(
-        EventId = 3,
-        Level = LogLevel.Information,
-        Message = "Advertising {CapabilityCount} command capabilities: {Capabilities}")]
-    public static partial void Capabilities(ILogger logger, int capabilityCount, string capabilities);
 }

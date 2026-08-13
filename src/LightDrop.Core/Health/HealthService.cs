@@ -1,12 +1,12 @@
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Devices;
-using LightDrop.Core.Protocol;
 
 namespace LightDrop.Core.Health;
 
-/// <inheritdoc cref="IHealthService"/>
-public sealed class HealthService(IDeviceIdentityProvider identityProvider, CommandRegistry commandRegistry)
-    : IHealthService
+/// <summary>
+/// Builds this device's health snapshot.
+/// </summary>
+public sealed class HealthService(DeviceIdentityProvider identityProvider)
 {
     public async ValueTask<HealthResponse> GetHealthAsync(CancellationToken cancellationToken = default)
     {
@@ -20,9 +20,10 @@ public sealed class HealthService(IDeviceIdentityProvider identityProvider, Comm
             DeviceName = identity.Name,
             Platform = DevicePlatform.Current,
 
-            // Projected from the registered handlers, so this can never claim support the
-            // daemon does not actually have.
-            Capabilities = commandRegistry.Capabilities,
+            // Empty until the first command handler ships (file transfer, milestone 3). When
+            // commands exist this must be projected from the registered handlers rather than
+            // hand-maintained, or the advertised list will drift from what the daemon accepts.
+            Capabilities = [],
         };
     }
 }

@@ -1,7 +1,6 @@
 using LightDrop.Core;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Devices;
-using LightDrop.Core.Protocol;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -16,9 +15,8 @@ namespace LightDrop.Daemon;
 /// as a confusing 500 much later.
 /// </remarks>
 internal sealed class DaemonLifetimeService(
-    IDeviceIdentityProvider identityProvider,
+    DeviceIdentityProvider identityProvider,
     DaemonEndpointOptions endpoint,
-    CommandRegistry commandRegistry,
     ILogger<DaemonLifetimeService> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -33,13 +31,6 @@ internal sealed class DaemonLifetimeService(
             identity.Name,
             identity.Id,
             DevicePlatform.Current);
-
-        DaemonLog.Capabilities(
-            logger,
-            commandRegistry.Capabilities.Count,
-            commandRegistry.Capabilities.Count == 0
-                ? "(none)"
-                : string.Join(", ", commandRegistry.Capabilities));
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

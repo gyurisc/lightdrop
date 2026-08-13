@@ -48,11 +48,18 @@ public static class LightDropDaemon
     /// <summary>
     /// Runs the daemon until the process is asked to stop.
     /// </summary>
+    /// <param name="endpoint">Where to bind. Resolved from the environment when null.</param>
+    /// <param name="dataDirectory">
+    /// Overrides the config and state location. Needed whenever two daemons run on one machine —
+    /// sharing a state file would make them fight over a single device identity.
+    /// </param>
+    /// <param name="cancellationToken">Cancelling triggers a graceful shutdown.</param>
     public static async Task RunAsync(
         DaemonEndpointOptions? endpoint = null,
+        string? dataDirectory = null,
         CancellationToken cancellationToken = default)
     {
-        var app = Create(endpoint);
+        var app = Create(endpoint, dataDirectory);
         await using (app.ConfigureAwait(false))
         {
             await app.StartAsync(cancellationToken).ConfigureAwait(false);

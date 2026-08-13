@@ -60,19 +60,24 @@ try
 }
 catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
 {
-    // Ctrl+C is a normal way to stop the daemon, not a failure.
+    // Ctrl+C is a normal way to stop the daemon, not a failure. The usual shutdown path does not
+    // throw at all — the host stops cleanly and the command returns 0 — so this only covers
+    // cancellation landing while the host is still starting.
     return 0;
 }
-catch (InvalidOperationException ex)
+catch (Exception ex) when (ex is InvalidOperationException or IOException)
 {
-    // Configuration and state problems surface as these, and the message is written for humans.
+    // InvalidOperationException: configuration and state problems, whose messages are written
+    // for humans. IOException: Kestrel failing to bind, overwhelmingly because the port is
+    // already taken by another daemon. Neither should reach the user as a stack trace.
     await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
     return 1;
 }
 
 static void PrintUsage(IEnumerable<ICliCommand> commands)
 {
-    Console.WriteLine("LightDrop — zero-config local sharing between your own devices.");
+    // ASCII only: legacy Windows consoles run a non-UTF-8 code page and render an em dash as '?'.
+    Console.WriteLine("LightDrop - zero-config local sharing between your own devices.");
     Console.WriteLine();
     Console.WriteLine("Usage: lightdrop <command>");
     Console.WriteLine();

@@ -15,6 +15,22 @@ public sealed class JsonStateStore(IOptions<StorageOptions> options) : IStateSto
 
     public async ValueTask<LightDropState> LoadAsync(CancellationToken cancellationToken = default)
     {
+        // Gated on the same semaphore as SaveAsync. File.OpenRead does not share delete access,
+        // so a read in flight makes the save's File.Move fail with an access violation on
+        // Windows. These files are tiny; serialising reads against writes costs nothing.
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await LoadUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async ValueTask<LightDropState> LoadUnsynchronizedAsync(CancellationToken cancellationToken)
+    {
         var path = _options.StateFilePath;
 
         if (!File.Exists(path))
@@ -58,7 +74,24 @@ public sealed class JsonStateStore(IOptions<StorageOptions> options) : IStateSto
 
             // Write-then-rename. A crash mid-write leaves the previous state intact rather than a
             // truncated file, which would be unrecoverable given the failure mode described above.
-            await using (var stream = File.Create(temporaryPath))
+            //
+            var streamOptions = new FileStreamOptions
+            {
+                Mode = FileMode.Create,
+                Access = FileAccess.Write,
+            };
+
+            // Restrict the file to its owner. The default umask would make it 0644 —
+            // world-readable inside a 755 home directory on macOS. It holds device identity today
+            // and paired-peer key material later, so other local accounts must not be able to read
+            // it. Windows needs no equivalent: the user profile ACL already denies other
+            // non-admin users, and setting UnixCreateMode there throws.
+            if (!OperatingSystem.IsWindows())
+            {
+                streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+
+            await using (var stream = new FileStream(temporaryPath, streamOptions))
             {
                 await JsonSerializer
                     .SerializeAsync(stream, state, LightDropJsonContext.Default.LightDropState, cancellationToken)

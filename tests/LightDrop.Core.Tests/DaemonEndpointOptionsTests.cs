@@ -35,6 +35,21 @@ public sealed class DaemonEndpointOptionsTests
         Assert.Equal(new Uri("http://127.0.0.1:5533/"), options.ClientAddress);
     }
 
+    [Theory]
+    [InlineData("::1")]
+    [InlineData("fe80::1")]
+    public void FormatsIpv6HostsAsBracketedUris(string host)
+    {
+        // Validate() accepts IPv6 because Kestrel binds them fine, but Uri rejects an unbracketed
+        // literal. Without bracketing the daemon binds and then throws formatting its own
+        // startup log line.
+        var options = new DaemonEndpointOptions { Host = host, Port = 5533 };
+
+        options.Validate();
+
+        Assert.Equal(new Uri($"http://[{host}]:5533/"), options.BaseAddress);
+    }
+
     [Fact]
     public void ClientAddressMatchesBaseAddressForConcreteHosts()
     {

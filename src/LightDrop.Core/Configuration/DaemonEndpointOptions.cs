@@ -31,7 +31,7 @@ public sealed class DaemonEndpointOptions
     public int Port { get; init; } = DefaultPort;
 
     /// <summary>The address the daemon binds to.</summary>
-    public Uri BaseAddress => new($"http://{Host}:{Port}/");
+    public Uri BaseAddress => new($"http://{FormatHostForUri(Host)}:{Port}/");
 
     /// <summary>
     /// The address a client on this machine should call. A daemon bound to a wildcard address
@@ -40,6 +40,14 @@ public sealed class DaemonEndpointOptions
     public Uri ClientAddress => Host is "0.0.0.0" or "::" or "[::]"
         ? new Uri($"http://{DefaultHost}:{Port}/")
         : BaseAddress;
+
+    /// <summary>
+    /// Bracket IPv6 literals. Kestrel binds through <see cref="IPAddress.Parse"/>, which accepts
+    /// a bare <c>::1</c>, but <see cref="Uri"/> rejects it unbracketed — so without this an IPv6
+    /// host binds successfully and then throws the first time the address is formatted.
+    /// </summary>
+    private static string FormatHostForUri(string host) =>
+        host.Contains(':', StringComparison.Ordinal) ? $"[{host}]" : host;
 
     /// <summary>
     /// Builds options from the environment, falling back to the defaults above.

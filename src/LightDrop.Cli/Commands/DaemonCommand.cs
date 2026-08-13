@@ -14,7 +14,9 @@ internal sealed class DaemonCommand(DaemonEndpointOptions endpoint) : ICliComman
     public async Task<int> ExecuteAsync(string[] args, CancellationToken cancellationToken)
     {
         // In-process rather than spawning anything: one binary is the whole point.
-        await Daemon.LightDropDaemon.RunAsync(endpoint, cancellationToken).ConfigureAwait(false);
+        await Daemon.LightDropDaemon
+            .RunAsync(endpoint, dataDirectory: null, cancellationToken)
+            .ConfigureAwait(false);
         return 0;
     }
 }

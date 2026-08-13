@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The only executable in the solution. AssemblyName makes the artifact `lightdrop`,
+       matching the command in the README. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lightdrop</AssemblyName>
+    <RootNamespace>LightDrop.Cli</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+    <RuntimeIdentifiers>win-x64;osx-arm64;osx-x64</RuntimeIdentifiers>
+    <!-- Applied on publish; see README for the publish commands. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LightDrop.Core\LightDrop.Core.csproj" />
+    <ProjectReference Include="..\LightDrop.Daemon\LightDrop.Daemon.csproj" />
+  </ItemGroup>
+
+</Project>

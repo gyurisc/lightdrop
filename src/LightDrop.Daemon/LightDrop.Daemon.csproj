@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A class library, not an application. LightDrop ships as a single executable, so the CLI
+       is the only entry point and it hosts this daemon in-process. FrameworkReference is how a
+       library consumes ASP.NET Core without becoming a web app of its own. -->
+
+  <PropertyGroup>
+    <RootNamespace>LightDrop.Daemon</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- Source-generates the minimal API request delegates. Without this, MapGet reflects over
+         the handler at runtime, which trips the trim and AOT analyzers enabled above. -->
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LightDrop.Core\LightDrop.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -76,7 +76,9 @@ already exists. Adding a state-store reference to anything under `Discovery` sho
 
 ## Storage
 
-Both files live in `%APPDATA%\LightDrop` (Windows) or `~/.config/LightDrop` (macOS).
+Both files live in `%APPDATA%\LightDrop` (Windows) or `~/Library/Application Support/LightDrop`
+(macOS). Not `~/.config` — .NET does **not** apply the Linux XDG mapping to macOS, contrary to what
+this file and `LightDropDirectories` used to claim. Verified by hand on macOS 15.7.4.
 
 | File | Owner | LightDrop may | Contains |
 |---|---|---|---|

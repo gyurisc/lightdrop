@@ -182,3 +182,23 @@ defaulting to what already exists.
 ### 20. `.sln`, not `.slnx`
 
 .NET 10 defaults to the newer `.slnx`. Classic format chosen for tooling compatibility. Worth revisiting — `.slnx` has no GUIDs and no merge conflicts.
+
+---
+
+### 21. macOS stores data in `~/Library/Application Support`, not `~/.config`
+
+`LightDropDirectories` documented the opposite: that .NET applies the Linux XDG mapping to macOS,
+and that following the cross-platform CLI convention made `~/.config` the right home. **Both halves
+were wrong.** `Environment.SpecialFolder.ApplicationData` resolves to
+`~/Library/Application Support` on macOS, confirmed on 15.7.4 by finding `state.json` there while a
+hand-written `config.json` sat unread in `~/.config/LightDrop`.
+
+This was user-facing: the docs told Mac users to hand-edit a file the app never reads, and
+`config.json` failures are deliberately silent, so nothing reported the mistake.
+
+**Behaviour kept, documentation fixed.** The platform-native location is where a Mac user's tooling
+expects application data. The convention argument does not outweigh being native, and honouring it
+would mean overriding the platform with extra code for no user benefit.
+
+**Cost of finding it:** nothing in CI could have. Only running the daemon on a real Mac and looking
+at the filesystem surfaced it — which is the argument for the manual checklist in the roadmap.

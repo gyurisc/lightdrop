@@ -85,7 +85,7 @@ daemon test must pass a no-op or fake transport** or it will open real sockets.
 
 ## config.json vs state.json — never merge these
 
-In `%APPDATA%\LightDrop` / `~/.config/LightDrop`:
+In `%APPDATA%\LightDrop` (Windows) / `~/Library/Application Support/LightDrop` (macOS):
 
 | File | Owner | LightDrop may | Contains |
 |---|---|---|---|
@@ -131,7 +131,8 @@ Prefer behavior over implementation detail: do not assert on the `.tmp` filename
 
 ## Known gaps
 
-- macOS is CI-verified but has never been run by a human. `Environment.MachineName` on macOS yields `Something.local` rather than a friendly name, which undercuts the README's example output.
+- macOS was verified by hand on 2026-08-16 (Mac Mini, Apple Silicon, macOS 15.7.4): clean build, full test suite, trimmed single-file publish, `state.json` created `0600`, config loading, stable identity across restarts, and two-way discovery with Windows. `Environment.MachineName` returned a clean `Pips-Mac-mini` — the old claim that it yields `Something.local` was wrong.
+- **Denying the macOS Local Network permission did not stop discovery** on 15.7.4 — the daemon kept advertising *and* kept seeing peers with the permission explicitly off. The README's claim that discovery requires it is unverified. One machine, no reboot between toggling and testing, so this is an observation rather than proven causation.
 - macOS release binaries need an executable bit and a Gatekeeper story (codesign/notarize, or a documented `xattr` workaround). CI does not publish.
 - Discovery is verified between two daemons on one Windows machine, **not yet between two real machines**, and not at all on macOS by a human.
 - The mDNS library is a community fork of a project abandoned in 2019, and its `Common.Logging` dependency required a targeted trim suppression (`docs/DECISIONS.md` #16).

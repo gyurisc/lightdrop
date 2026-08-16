@@ -39,8 +39,10 @@ lightdrop peers    # list nearby devices
 Discovered peers are **nearby strangers**: presence, not trust. Nothing is sent to them and nothing
 is stored about them. Pairing comes next.
 
-On first run, macOS asks for Local Network permission and Windows shows a Defender Firewall prompt.
-Discovery does not work until these are allowed, and networks that block multicast — many corporate
+On first run, macOS asks for Local Network permission and Windows may show a Defender Firewall
+prompt. Allow both. (On macOS 15.7.4 discovery kept working even with the permission denied, so
+the requirement is not as absolute as it appears — but do not rely on that.) Networks that block
+multicast — many corporate
 and guest networks — prevent it entirely.
 
 ## Goals

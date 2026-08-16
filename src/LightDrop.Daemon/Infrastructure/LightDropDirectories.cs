@@ -8,9 +8,12 @@ namespace LightDrop.Daemon.Infrastructure;
 /// unaware of <see cref="Environment.SpecialFolder"/> and platform layout entirely.
 /// <para>
 /// <see cref="Environment.SpecialFolder.ApplicationData"/> maps to <c>%APPDATA%</c> on Windows
-/// and <c>~/.config</c> on macOS — .NET applies the same XDG-style mapping to macOS as to Linux
-/// rather than using <c>~/Library/Application Support</c>. That matches what most cross-platform
-/// developer CLIs do, so it is the convention worth following here.
+/// and <c>~/Library/Application Support</c> on macOS. An earlier version of this comment claimed
+/// .NET applied the Linux XDG mapping (<c>~/.config</c>) to macOS as well, and argued that the
+/// cross-platform CLI convention made it the right choice. That claim is simply false — verified
+/// by hand on macOS 15.7.4, where the daemon created <c>state.json</c> under
+/// <c>~/Library/Application Support/LightDrop</c>. The platform-native location is kept; only the
+/// documentation was wrong. See <c>docs/DECISIONS.md</c> #21.
 /// </para>
 /// </remarks>
 public static class LightDropDirectories

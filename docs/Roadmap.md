@@ -12,7 +12,7 @@ One milestone at a time. Each ships working, tested software. Nothing starts bef
 - Core and Daemon test suites; CI on Windows and macOS
 - Single-file publish, trimmed, zero trim warnings
 
-## M1 — Local peer discovery ✅ (Windows; macOS unverified by hand)
+## M1 — Local peer discovery ✅ (verified by hand, Windows ↔ macOS)
 
 **Goal:** two machines on a LAN see each other with no configuration.
 
@@ -35,22 +35,41 @@ Automated tests cannot cover multicast: CI runners cannot route it, and macOS dr
 without the Local Network permission, so a test would hang rather than fail. These must be done by
 hand.
 
+Verified 2026-08-16 between a Windows 11 desktop (Ethernet, `192.168.0.222/24`) and a Mac Mini
+(Apple Silicon, macOS 15.7.4), both built from source at `8a67966`.
+
 - [x] Two daemons on one Windows machine (`LIGHTDROP_PORT`, `LIGHTDROP_DATA_DIR`) discover each
       other; neither lists itself
-- [x] Trimmed single-file binary runs discovery without a reflection failure
-- [ ] **Two real machines on the same LAN discover each other** — the actual milestone claim
-- [ ] macOS: the Local Network permission prompt appears; denying it leaves the daemon running and
-      the peer list empty rather than hanging
-- [ ] Windows: behaviour with the Defender Firewall prompt allowed and denied
-- [ ] Ctrl+C on one machine removes it from the other's list promptly (goodbye packet)
+- [x] Trimmed single-file binary runs discovery without a reflection failure — now on macOS too
+- [x] **Two real machines on the same LAN discover each other** — the actual milestone claim.
+      Both directions, cross-platform, neither listing itself. A device-name change propagated
+      into the existing entry without duplicating it.
+- [x] macOS: denying the Local Network permission leaves the daemon running, `/health` answering,
+      and `peers` returning promptly rather than hanging
+- [ ] macOS: the permission prompt appears on first run — **inconclusive.** Terminal held the grant
+      and no prompt was observed for LightDrop specifically. Note the grant attaches to the
+      *terminal app*, not to `lightdrop`; launching from Finder is a different path, untested.
+- [ ] Windows: behaviour with the Defender Firewall prompt **denied** — the allowed case works, but
+      it was never tested from a clean state: six `lightdrop` allow rules already existed on the
+      Public profile, alongside the built-in `mDNS (UDP-In)` Public rule
+- [x] Ctrl+C on one machine removes it from the other's list promptly (goodbye packet) — immediate,
+      nowhere near the 180s window
 - [ ] Sleeping a machine ages it out within ~180s rather than instantly or never
 - [ ] A multicast-blocking network: daemon still starts, `/health` still works, peers list empty
-- [ ] macOS device name shows the friendly name, not `Something.local`
-- [ ] A machine with VPN/Hyper-V/WSL adapters up still discovers
+- [x] macOS device name shows a friendly name — `Environment.MachineName` returned `Pips-Mac-mini`,
+      with no `.local` suffix
+- [x] A machine with Hyper-V/WSL adapters up still discovers — a `vEthernet` adapter was up on
+      `172.26.176.1` throughout; the interface filter did its job. VPN adapters still untested.
 
-**Known risks:** macOS Local Network permission fails silently and cannot be reset with `tccutil`;
-`Environment.MachineName` on macOS yields `Something.local`; the mDNS library is a community fork
-of a project abandoned in 2019.
+**Surprise worth chasing:** on macOS 15.7.4, denying the Local Network permission did not stop
+discovery at all — the Mac kept advertising *and* kept seeing the Windows peer with the permission
+explicitly off. The documented premise that discovery requires it is unverified. Caveats: one
+machine, and no reboot between revoking the permission and testing, so this is an observation, not
+proven causation.
+
+**Known risks:** the macOS Local Network permission never re-prompts once denied — the System
+Settings toggle is the only way back, and the app cannot explain that in-band. The mDNS library is
+a community fork of a project abandoned in 2019.
 
 ## M2 — Secure pairing
 

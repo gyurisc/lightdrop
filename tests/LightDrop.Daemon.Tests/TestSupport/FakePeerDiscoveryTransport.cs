@@ -56,9 +56,11 @@ internal sealed class FakePeerDiscoveryTransport : IPeerDiscoveryTransport
         string deviceName = "MacBook Air",
         string platform = DevicePlatform.MacOS,
         int protocolVersion = 1,
-        int port = 5533)
+        int port = 5533,
+        string address = "192.168.0.149")
     {
-        if (!PeerAnnouncement.TryCreate(deviceId, deviceName, platform, protocolVersion, null, port, out var announcement))
+        if (!PeerAnnouncement.TryCreate(
+                deviceId, deviceName, platform, protocolVersion, null, port, address, out var announcement))
         {
             throw new InvalidOperationException($"Test announcement for '{deviceId}' was rejected.");
         }

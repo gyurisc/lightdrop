@@ -18,6 +18,7 @@ namespace LightDrop.Daemon.Discovery;
 internal sealed class PeerDiscoveryService(
     IPeerDiscoveryTransport transport,
     PeerRegistry registry,
+    DiscoveryStatus status,
     DeviceIdentityProvider identityProvider,
     DaemonEndpointOptions endpoint,
     ILogger<PeerDiscoveryService> logger) : IHostedService
@@ -32,11 +33,13 @@ internal sealed class PeerDiscoveryService(
         try
         {
             await transport.StartAsync(identity, endpoint.Port, cancellationToken).ConfigureAwait(false);
+            status.MarkRunning();
         }
         catch (Exception ex)
         {
             // Discovery is a convenience, not a prerequisite. A blocked firewall or a denied
             // macOS Local Network permission must not stop the daemon serving /health.
+            status.MarkStopped();
             DiscoveryLog.StartFailed(logger, ex);
         }
     }
@@ -45,11 +48,27 @@ internal sealed class PeerDiscoveryService(
     {
         transport.PeerAnnounced -= OnPeerAnnounced;
         transport.PeerGone -= OnPeerGone;
+        status.MarkStopped();
 
         await transport.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private void OnPeerAnnounced(PeerAnnouncement announcement) => registry.Observe(announcement);
+    private void OnPeerAnnounced(PeerAnnouncement announcement)
+    {
+        // Only the first sighting is logged. Peers re-announce periodically, so logging every
+        // observation would bury everything else in the daemon's output.
+        if (registry.Observe(announcement))
+        {
+            DiscoveryLog.PeerAppeared(
+                logger, announcement.DeviceName, announcement.Platform, announcement.DeviceId);
+        }
+    }
 
-    private void OnPeerGone(string deviceId) => registry.Forget(deviceId);
+    private void OnPeerGone(string deviceId)
+    {
+        if (registry.Forget(deviceId))
+        {
+            DiscoveryLog.PeerDisappeared(logger, deviceId);
+        }
+    }
 }

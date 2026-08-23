@@ -14,6 +14,15 @@ internal static partial class DiscoveryLog
     public static partial void Stopped(ILogger logger);
 
     [LoggerMessage(
+        EventId = 207,
+        Level = LogLevel.Information,
+        Message = "Peer appeared: {DeviceName} ({Platform}) [{DeviceId}].")]
+    public static partial void PeerAppeared(ILogger logger, string deviceName, string platform, string deviceId);
+
+    [LoggerMessage(EventId = 208, Level = LogLevel.Information, Message = "Peer went away: [{DeviceId}].")]
+    public static partial void PeerDisappeared(ILogger logger, string deviceId);
+
+    [LoggerMessage(
         EventId = 202,
         Level = LogLevel.Debug,
         Message = "Ignored a malformed or unreadable peer announcement.")]

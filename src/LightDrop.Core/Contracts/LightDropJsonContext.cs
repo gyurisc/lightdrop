@@ -17,6 +17,7 @@ namespace LightDrop.Core.Contracts;
     WriteIndented = true)]
 [JsonSerializable(typeof(HealthResponse))]
 [JsonSerializable(typeof(IReadOnlyList<DiscoveredPeer>))]
+[JsonSerializable(typeof(PeerListResponse))]
 [JsonSerializable(typeof(LightDropConfig))]
 [JsonSerializable(typeof(LightDropState))]
 public partial class LightDropJsonContext : JsonSerializerContext;

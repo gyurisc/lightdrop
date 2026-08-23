@@ -20,10 +20,11 @@ public sealed class PeerAnnouncementTests
         string? platform = DevicePlatform.MacOS,
         int protocolVersion = 1,
         IEnumerable<string>? capabilities = null,
-        int port = 5533)
+        int port = 5533,
+        string? address = "192.168.0.149")
     {
         Assert.True(PeerAnnouncement.TryCreate(
-            deviceId, deviceName, platform, protocolVersion, capabilities, port, out var announcement));
+            deviceId, deviceName, platform, protocolVersion, capabilities, port, address, out var announcement));
         return announcement!;
     }
 
@@ -93,7 +94,7 @@ public sealed class PeerAnnouncementTests
     {
         // Without an identifier there is nothing to deduplicate or display against.
         Assert.False(PeerAnnouncement.TryCreate(
-            deviceId, "Laptop", DevicePlatform.MacOS, 1, null, 5533, out var announcement));
+            deviceId, "Laptop", DevicePlatform.MacOS, 1, null, 5533, "192.168.0.149", out var announcement));
         Assert.Null(announcement);
     }
 
@@ -101,7 +102,7 @@ public sealed class PeerAnnouncementTests
     public void RejectsADeviceIdMadeEntirelyOfControlCharacters()
     {
         Assert.False(PeerAnnouncement.TryCreate(
-            $"{Escape}{ZeroWidthSpace}", "Laptop", DevicePlatform.MacOS, 1, null, 5533, out _));
+            $"{Escape}{ZeroWidthSpace}", "Laptop", DevicePlatform.MacOS, 1, null, 5533, "192.168.0.149", out _));
     }
 
     [Theory]
@@ -110,7 +111,7 @@ public sealed class PeerAnnouncementTests
     public void RejectsAnOutOfRangePort(int port)
     {
         Assert.False(PeerAnnouncement.TryCreate(
-            "peer-1", "Laptop", DevicePlatform.MacOS, 1, null, port, out _));
+            "peer-1", "Laptop", DevicePlatform.MacOS, 1, null, port, "192.168.0.149", out _));
     }
 
     [Fact]
@@ -137,5 +138,30 @@ public sealed class PeerAnnouncementTests
         var announcement = Create(platform: "freebsd");
 
         Assert.Equal("freebsd", announcement.Platform);
+    }
+
+    [Fact]
+    public void KeepsAnAddressOnTheLocalNetwork() =>
+        Assert.Equal("10.0.0.5", Create(address: "10.0.0.5").Address);
+
+    [Fact]
+    public void RejectsAnAnnouncementNamingAHostBeyondTheLocalNetwork()
+    {
+        // Pairing dials this address, so a peer that could name any host would be able to point
+        // this machine at a third party. Rejected at ingestion rather than before dialling: the
+        // point of the chokepoint is that a later consumer cannot forget the check.
+        Assert.False(PeerAnnouncement.TryCreate(
+            "peer-1", "Evil", DevicePlatform.MacOS, 1, null, 5533, "203.0.113.7", out var announcement));
+        Assert.Null(announcement);
+    }
+
+    [Fact]
+    public void RejectsAnAnnouncementWithNoAddress()
+    {
+        // Presence with nowhere to go is not useful presence: such a peer could be listed but
+        // never paired with, so the row would only mislead.
+        Assert.False(PeerAnnouncement.TryCreate(
+            "peer-1", "Nowhere", DevicePlatform.MacOS, 1, null, 5533, null, out var announcement));
+        Assert.Null(announcement);
     }
 }

@@ -29,6 +29,15 @@ public sealed record DiscoveredPeer
     /// </summary>
     public required int Port { get; init; }
 
+    /// <summary>
+    /// The IPv4 address the peer appears to be at, checked against the local ranges on ingestion.
+    /// </summary>
+    /// <remarks>
+    /// Unverified like everything else here. It is what pairing will dial, which is precisely why
+    /// it is bounded at the boundary rather than trusted at the point of use.
+    /// </remarks>
+    public required string Address { get; init; }
+
     /// <summary>When this peer was last heard from.</summary>
     public required DateTimeOffset LastSeen { get; init; }
 }

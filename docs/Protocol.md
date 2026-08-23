@@ -107,6 +107,39 @@ anything key-shaped, and the **application version**. `protocolVersion` is the c
 so broadcasting an exact build number would hand a passive observer a version fingerprint for no
 product benefit. `version` remains available on loopback via `/health`.
 
+### `pv` is what makes a record ours
+
+Browsing one service type does not guarantee only that type is delivered — the mDNS stack raises
+instances of other services too. A Google Cast TXT record carries an `id` key, which was once
+enough to mint a peer: a television appeared in `lightdrop peers` with a derived name, `unknown`
+platform and protocol `0`. **A record without a `pv` key is rejected outright.** The value still
+need not parse; a malformed one yields `0` rather than discarding an otherwise valid LightDrop
+peer.
+
+### The address is observed, not claimed
+
+Discovery captures the peer's IPv4 address because pairing has to dial something. It is taken from
+**the source address of the packet that carried the announcement**, falling back to the advertised
+A record only when the transport surfaces no endpoint — a claimed record is the sender's opinion,
+while the source address is what the network observed.
+
+It is then checked at ingestion, and an announcement whose address does not survive is **rejected
+entirely** rather than listed without one. Only the private, link-local and loopback IPv4 ranges
+are accepted:
+
+| Range | Why |
+|---|---|
+| `10/8`, `172.16/12`, `192.168/16` | ordinary LANs |
+| `169.254/16` | link-local, when DHCP does not answer |
+| `127/8` | two daemons on one machine, a supported way to exercise discovery |
+
+Everything else is refused, including any public address. **This is the point of the check**: without
+it a peer could announce a third party's address and make LightDrop open a connection to a host of
+its choosing the moment pairing exists. It is a range check, not a route check — confirming an
+address really sits on one of this machine's subnets would mean enumerating interfaces, which Core
+must not do. The residual risk is a peer naming a different *local* machine, which is already on
+the link and can announce for itself anyway.
+
 ### The SRV port is not an authorization boundary
 
 DNS-SD requires a port in the SRV record, so the daemon's real port is advertised. **It is not
@@ -123,6 +156,32 @@ reaches the registry, so a hostile device name cannot drive a terminal. Fields a
 the registry is capped at 256 peers with least-recently-seen eviction, and a peer whose name
 sanitizes to nothing is displayed as `Peer <id prefix>`. Sanitization happens **once at the
 boundary**, not at render time, so every consumer inherits it.
+
+### `GET /api/peers`
+
+Loopback only, for the local `lightdrop peers` command. The response carries the state of
+discovery alongside the list, because an empty list on its own is ambiguous:
+
+```json
+{
+  "discoveryRunning": true,
+  "discoveryStartedAt": "2026-08-23T09:12:35.5Z",
+  "peers": [
+    {
+      "deviceId": "…", "deviceName": "Work Laptop", "platform": "windows",
+      "protocolVersion": 1, "capabilities": [], "port": 5533,
+      "address": "192.168.0.222", "lastSeen": "…"
+    }
+  ]
+}
+```
+
+`discoveryRunning` is false when the transport failed to start — a blocked firewall or a denied
+macOS Local Network permission — in which case no peer can ever appear and the daemon says so
+definitively. When it is true, `discoveryStartedAt` distinguishes *still looking* from *looked
+long enough*: a freshly started daemon has legitimately heard nothing yet, and telling that user
+to check their firewall sends them after a problem they do not have. The threshold lives in the
+caller, not in this contract.
 
 ### Liveness
 

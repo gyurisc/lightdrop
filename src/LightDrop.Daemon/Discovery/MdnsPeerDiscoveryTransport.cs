@@ -19,6 +19,17 @@ public sealed class MdnsPeerDiscoveryTransport(ILogger<MdnsPeerDiscoveryTranspor
     /// <summary>The DNS-SD service type. Nine characters, inside the 15-character limit.</summary>
     public const string ServiceName = "_lightdrop._tcp";
 
+    /// <summary>
+    /// The fully qualified service type, used to reject instances of other services.
+    /// </summary>
+    /// <remarks>
+    /// Browsing one service type does not mean only that type is delivered: the library raises
+    /// discovery events for every instance it sees on the link. Without this check any TXT record
+    /// carrying an <c>id</c> key reached the parser, and a Google Cast television was minted as a
+    /// peer.
+    /// </remarks>
+    private static readonly DomainName ServiceDomain = new($"{ServiceName}.local");
+
     private MulticastService? _mdns;
     private ServiceDiscovery? _discovery;
     private ServiceProfile? _profile;
@@ -124,10 +135,40 @@ public sealed class MdnsPeerDiscoveryTransport(ILogger<MdnsPeerDiscoveryTranspor
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Where the peer appears to be: the source of the packet, or failing that what it claimed.
+    /// </summary>
+    /// <remarks>
+    /// The source address is preferred because it is what the network observed rather than what
+    /// the sender asserted — an announcer can put any address in an A record, including a third
+    /// party's. The claimed record is a fallback for the case where the library surfaces no
+    /// endpoint. Neither is trusted here: <see cref="PeerAnnouncement.TryCreate"/> is the only
+    /// thing that decides an address is acceptable.
+    /// </remarks>
+    private static string? AddressOf(
+        ServiceInstanceDiscoveryEventArgs e, IReadOnlyList<ResourceRecord> records, SRVRecord? srv)
+    {
+        if (e.RemoteEndPoint?.Address is { } source)
+        {
+            return source.ToString();
+        }
+
+        var claimed = records
+            .OfType<ARecord>()
+            .FirstOrDefault(record => srv is null || record.Name.Equals(srv.Target));
+
+        return claimed?.Address.ToString();
+    }
+
     private void OnServiceInstanceDiscovered(object? sender, ServiceInstanceDiscoveryEventArgs e)
     {
         try
         {
+            if (!e.ServiceInstanceName.IsSubdomainOf(ServiceDomain))
+            {
+                return;
+            }
+
             var records = e.Message.Answers.Concat(e.Message.AdditionalRecords).ToArray();
 
             var txt = records
@@ -139,11 +180,12 @@ public sealed class MdnsPeerDiscoveryTransport(ILogger<MdnsPeerDiscoveryTranspor
                 return;
             }
 
-            var port = records
+            var srv = records
                 .OfType<SRVRecord>()
-                .FirstOrDefault(record => record.Name.Equals(e.ServiceInstanceName))?.Port ?? 0;
+                .FirstOrDefault(record => record.Name.Equals(e.ServiceInstanceName));
 
-            if (PeerTxtRecord.TryParse(txt.Strings, port, out var announcement) && announcement is not null)
+            if (PeerTxtRecord.TryParse(txt.Strings, srv?.Port ?? 0, AddressOf(e, records, srv), out var announcement)
+                && announcement is not null)
             {
                 PeerAnnounced?.Invoke(announcement);
             }
@@ -160,6 +202,11 @@ public sealed class MdnsPeerDiscoveryTransport(ILogger<MdnsPeerDiscoveryTranspor
     {
         try
         {
+            if (!e.ServiceInstanceName.IsSubdomainOf(ServiceDomain))
+            {
+                return;
+            }
+
             // The instance label is the peer's device identifier, by construction above.
             var deviceId = e.ServiceInstanceName.Labels.Count > 0 ? e.ServiceInstanceName.Labels[0] : null;
 

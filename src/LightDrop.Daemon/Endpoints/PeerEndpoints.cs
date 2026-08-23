@@ -1,5 +1,6 @@
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Discovery;
+using LightDrop.Daemon.Discovery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -19,8 +20,13 @@ internal static class PeerEndpoints
     /// </remarks>
     public static IEndpointRouteBuilder MapPeerEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/peers", Ok<IReadOnlyList<DiscoveredPeer>> (PeerRegistry registry) =>
-            TypedResults.Ok(registry.GetPeers()))
+        endpoints.MapGet("/api/peers", Ok<PeerListResponse> (PeerRegistry registry, DiscoveryStatus status) =>
+            TypedResults.Ok(new PeerListResponse
+            {
+                DiscoveryRunning = status.Running,
+                DiscoveryStartedAt = status.StartedAt,
+                Peers = registry.GetPeers(),
+            }))
             .WithName("Peers");
 
         return endpoints;

@@ -28,8 +28,12 @@ public sealed class PeerEndpointTests
         return (app, new HttpClient { BaseAddress = endpoint.ClientAddress }, transport);
     }
 
-    private static Task<IReadOnlyList<DiscoveredPeer>?> GetPeersAsync(HttpClient client) =>
-        client.GetFromJsonAsync("api/peers", LightDropJsonContext.Default.IReadOnlyListDiscoveredPeer, CancellationToken.None);
+    private static async Task<PeerListResponse> GetPeerListAsync(HttpClient client) =>
+        (await client.GetFromJsonAsync(
+            "api/peers", LightDropJsonContext.Default.PeerListResponse, CancellationToken.None))!;
+
+    private static async Task<IReadOnlyList<DiscoveredPeer>> GetPeersAsync(HttpClient client) =>
+        (await GetPeerListAsync(client)).Peers;
 
     [Fact]
     public async Task ReportsNoPeersBeforeAnyAreHeard()
@@ -41,7 +45,7 @@ public sealed class PeerEndpointTests
         {
             using (client)
             {
-                Assert.Empty((await GetPeersAsync(client))!);
+                Assert.Empty((await GetPeersAsync(client)));
             }
 
             await app.StopAsync(CancellationToken.None);
@@ -58,14 +62,16 @@ public sealed class PeerEndpointTests
         {
             using (client)
             {
-                transport.Announce("peer-1", "Work Laptop", "windows", protocolVersion: 1, port: 5533);
+                transport.Announce(
+                    "peer-1", "Work Laptop", "windows", protocolVersion: 1, port: 5533, address: "192.168.0.222");
 
-                var peer = Assert.Single((await GetPeersAsync(client))!);
+                var peer = Assert.Single((await GetPeersAsync(client)));
                 Assert.Equal("peer-1", peer.DeviceId);
                 Assert.Equal("Work Laptop", peer.DeviceName);
                 Assert.Equal("windows", peer.Platform);
                 Assert.Equal(1, peer.ProtocolVersion);
                 Assert.Equal(5533, peer.Port);
+                Assert.Equal("192.168.0.222", peer.Address);
                 Assert.Empty(peer.Capabilities);
             }
 
@@ -84,10 +90,10 @@ public sealed class PeerEndpointTests
             using (client)
             {
                 transport.Announce("peer-1");
-                Assert.Single((await GetPeersAsync(client))!);
+                Assert.Single((await GetPeersAsync(client)));
 
                 transport.Goodbye("peer-1");
-                Assert.Empty((await GetPeersAsync(client))!);
+                Assert.Empty((await GetPeersAsync(client)));
             }
 
             await app.StopAsync(CancellationToken.None);
@@ -138,7 +144,7 @@ public sealed class PeerEndpointTests
                 "health", LightDropJsonContext.Default.HealthResponse, CancellationToken.None);
 
             Assert.NotNull(health);
-            Assert.Empty((await GetPeersAsync(client))!);
+            Assert.Empty((await GetPeersAsync(client)));
         }
 
         // Shutdown must stay clean even though start failed.
@@ -177,5 +183,54 @@ public sealed class PeerEndpointTests
 
             await app.StopAsync(CancellationToken.None);
         }
+    }
+
+    [Fact]
+    public async Task ReportsDiscoveryRunningWithTheTimeItStarted()
+    {
+        // An empty peer list is ambiguous on its own: it means "nothing found yet" during the
+        // first seconds of browsing, and "something is blocking multicast" a minute later. The
+        // caller cannot tell those apart without knowing discovery is up and when it came up.
+        using var directory = new TempDataDirectory();
+        var (app, client, _) = await StartDaemonAsync(directory);
+
+        await using (app)
+        {
+            using (client)
+            {
+                var response = await GetPeerListAsync(client);
+
+                Assert.True(response.DiscoveryRunning);
+                Assert.NotNull(response.DiscoveryStartedAt);
+                Assert.Empty(response.Peers);
+            }
+
+            await app.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task ReportsDiscoveryStoppedWhenTheTransportCannotStart()
+    {
+        // The blocked-firewall and denied-permission case. Here an empty list is definitive
+        // rather than provisional, and the caller can say so instead of guessing.
+        using var directory = new TempDataDirectory();
+        var endpoint = new DaemonEndpointOptions { Host = "127.0.0.1", Port = FreeTcpPort.Get() };
+
+        await using var app = LightDropDaemon.Create(
+            endpoint, directory.FullPath, new FakePeerDiscoveryTransport { FailToStart = true });
+
+        await app.StartAsync(CancellationToken.None);
+
+        using (var client = new HttpClient { BaseAddress = endpoint.ClientAddress })
+        {
+            var response = await GetPeerListAsync(client);
+
+            Assert.False(response.DiscoveryRunning);
+            Assert.Null(response.DiscoveryStartedAt);
+            Assert.Empty(response.Peers);
+        }
+
+        await app.StopAsync(CancellationToken.None);
     }
 }

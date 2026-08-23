@@ -202,3 +202,50 @@ would mean overriding the platform with extra code for no user benefit.
 
 **Cost of finding it:** nothing in CI could have. Only running the daemon on a real Mac and looking
 at the filesystem surfaced it — which is the argument for the manual checklist in the roadmap.
+
+---
+
+### 22. Discovery ingested other people's mDNS services
+
+Browsing `_lightdrop._tcp` does not mean only that service type is delivered: the library raises a
+discovery event for every instance it sees on the link, and `OnServiceInstanceDiscovered` never
+checked the instance name. Any TXT record carrying an `id` key reached the parser — and `id` is a
+common key. A Google Cast television was minted as a peer and listed with a derived name, `unknown`
+platform and protocol `0`; an AirPlay instance was rejected only by luck, because its key is
+`deviceid` rather than `id`.
+
+Fixed in **two independent places**, deliberately:
+
+- **The transport** now rejects any instance that is not a subdomain of `_lightdrop._tcp.local`.
+  This is the correct primary fix — foreign services should not be looked at — but it sits in the
+  one file that cannot be unit tested.
+- **`PeerTxtRecord.TryParse`** now requires a `pv` key. Every LightDrop record carries one, so its
+  absence means the record is not ours. This is pure Core logic with a regression test, and it
+  holds whatever the transport delivers.
+
+The duplication is the point: the untestable fix is the better one, so it is backed by a testable
+one that fails loudly if the first is ever undone.
+
+**Found by running two machines and reading the peer list**, not by a test. The same class of bug
+would have shipped invisibly.
+
+---
+
+### 23. A discovered peer's address is observed, not claimed
+
+M2 needs an address to dial, which is the first time discovery captures something that steers this
+machine rather than merely informing it. Two decisions followed.
+
+**Prefer the packet source over the A record.** An announcer can put any address in an A record,
+including a third party's. The source address is what the network observed.
+
+**Reject anything outside the local ranges, at ingestion.** Private, link-local and loopback IPv4
+only; a public address is refused outright, so a hostile announcement cannot point pairing at an
+arbitrary internet host. An announcement with no usable address is rejected rather than listed —
+presence with nowhere to go could only mislead.
+
+The check is a range check, not a route check. Verifying an address really belongs to one of this
+machine's subnets needs interface enumeration, which Core is not allowed to do, and it would buy
+little: the residual risk is a peer naming another machine on the same link, which can announce for
+itself regardless.
+

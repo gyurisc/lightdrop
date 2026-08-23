@@ -60,7 +60,8 @@ public static class PeerTxtRecord
     /// <c>false</c> rather than throwing into the transport's event loop, and
     /// <see cref="PeerAnnouncement.TryCreate"/> sanitizes and bounds whatever survives.
     /// </remarks>
-    public static bool TryParse(IEnumerable<string> txtStrings, int port, out PeerAnnouncement? announcement)
+    public static bool TryParse(
+        IEnumerable<string> txtStrings, int port, string? address, out PeerAnnouncement? announcement)
     {
         ArgumentNullException.ThrowIfNull(txtStrings);
 
@@ -91,18 +92,24 @@ public static class PeerTxtRecord
         values.TryGetValue(DeviceNameKey, out var deviceName);
         values.TryGetValue(PlatformKey, out var platform);
 
-        var protocolVersion = 0;
-        if (values.TryGetValue(ProtocolVersionKey, out var rawProtocolVersion))
+        // The key must be present, though its value need not be sensible. Browsing a service type
+        // does not guarantee only that service type is delivered, so records belonging to other
+        // protocols reach this parser; a Google Cast announcement carries an `id` key, which was
+        // once enough to mint a peer and put a television in the peer list. Every LightDrop
+        // record carries `pv`, so its absence is the cheapest reliable "not ours".
+        if (!values.TryGetValue(ProtocolVersionKey, out var rawProtocolVersion))
         {
-            // A non-numeric value means a malformed peer, not a reason to discard it entirely.
-            _ = int.TryParse(rawProtocolVersion, CultureInfo.InvariantCulture, out protocolVersion);
+            return false;
         }
+
+        // A non-numeric value means a malformed peer, not a reason to discard it entirely.
+        _ = int.TryParse(rawProtocolVersion, CultureInfo.InvariantCulture, out var protocolVersion);
 
         var capabilities = values.TryGetValue(CapabilitiesKey, out var rawCapabilities)
             ? rawCapabilities.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
 
         return PeerAnnouncement.TryCreate(
-            deviceId, deviceName, platform, protocolVersion, capabilities, port, out announcement);
+            deviceId, deviceName, platform, protocolVersion, capabilities, port, address, out announcement);
     }
 }

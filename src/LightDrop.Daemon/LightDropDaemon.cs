@@ -149,6 +149,8 @@ public static class LightDropDaemon
             return new PeerRegistry(TimeProvider.System, identity.Id);
         });
 
+        services.AddSingleton(new DiscoveryStatus(TimeProvider.System));
+
         if (peerDiscoveryTransport is not null)
         {
             services.AddSingleton(peerDiscoveryTransport);

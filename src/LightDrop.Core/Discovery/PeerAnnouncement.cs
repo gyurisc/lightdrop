@@ -64,6 +64,21 @@ public sealed record PeerAnnouncement
     public required int Port { get; init; }
 
     /// <summary>
+    /// The IPv4 address this peer can be reached at on the local network.
+    /// </summary>
+    /// <remarks>
+    /// Preferred from the source address of the packet that carried the announcement, falling
+    /// back to the address record the peer advertised — a claimed record is a peer's opinion,
+    /// while the source address is what the network observed. Either way it is checked by
+    /// <see cref="LocalNetworkAddress"/> before it gets here.
+    /// <para>
+    /// Still not an authorization boundary. It says where a stranger appears to be, not that
+    /// anything may be sent there.
+    /// </para>
+    /// </remarks>
+    public required string Address { get; init; }
+
+    /// <summary>
     /// Cleans and bounds raw announcement data, rejecting only what cannot be salvaged.
     /// </summary>
     /// <returns><c>false</c> when the announcement carries no usable identifier.</returns>
@@ -74,6 +89,7 @@ public sealed record PeerAnnouncement
         int protocolVersion,
         IEnumerable<string>? capabilities,
         int port,
+        string? address,
         out PeerAnnouncement? announcement)
     {
         announcement = null;
@@ -86,6 +102,13 @@ public sealed record PeerAnnouncement
         }
 
         if (port is < 0 or > 65535)
+        {
+            return false;
+        }
+
+        // Rejected outright rather than salvaged: an unusable address cannot be defaulted to
+        // anything safe, and a peer that cannot be reached can only ever be a misleading row.
+        if (!LocalNetworkAddress.TryNormalize(address, out var safeAddress))
         {
             return false;
         }
@@ -114,6 +137,7 @@ public sealed record PeerAnnouncement
             ProtocolVersion = protocolVersion,
             Capabilities = SanitizeCapabilities(capabilities),
             Port = port,
+            Address = safeAddress!,
         };
 
         return true;

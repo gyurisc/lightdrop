@@ -152,6 +152,7 @@ public sealed class PeerRegistry(TimeProvider timeProvider, string localDeviceId
             Capabilities = Announcement.Capabilities,
             Port = Announcement.Port,
             LastSeen = LastSeen,
+                    Address = Announcement.Address,
         };
     }
 }

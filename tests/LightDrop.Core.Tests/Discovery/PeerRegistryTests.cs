@@ -11,7 +11,14 @@ public sealed class PeerRegistryTests
     private static PeerAnnouncement Announcement(string deviceId, string? name = null)
     {
         Assert.True(PeerAnnouncement.TryCreate(
-            deviceId, name ?? $"Device {deviceId}", DevicePlatform.MacOS, 1, null, 5533, out var announcement));
+            deviceId,
+            name ?? $"Device {deviceId}",
+            DevicePlatform.MacOS,
+            1,
+            null,
+            5533,
+            "192.168.0.149",
+            out var announcement));
         return announcement!;
     }
 

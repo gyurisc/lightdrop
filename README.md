@@ -45,6 +45,103 @@ the requirement is not as absolute as it appears — but do not rely on that.) N
 multicast — many corporate
 and guest networks — prevent it entirely.
 
+## Build and run from source
+
+**Prerequisites:** the [.NET 10 SDK](https://dotnet.microsoft.com/download). `global.json` pins
+`10.0.111` with `rollForward: latestFeature`, so any 10.0.1xx SDK works. Nothing else is needed —
+no database, no services, no configuration file.
+
+```bash
+git clone https://github.com/gyurisc/lightdrop.git
+cd lightdrop
+
+dotnet build LightDrop.sln   # warnings are errors; a clean build reports 0 warnings
+dotnet test LightDrop.sln    # Core tests are pure logic, Daemon tests do real file and HTTP I/O
+```
+
+Run the CLI without publishing. Everything after `--` is passed to LightDrop rather than to
+`dotnet`:
+
+```bash
+dotnet run --project src/LightDrop.Cli -- --help    # commands and environment variables
+dotnet run --project src/LightDrop.Cli -- daemon    # run the daemon in the foreground; Ctrl+C stops it
+```
+
+The daemon holds the terminal, so query it from a **second** terminal:
+
+```bash
+dotnet run --project src/LightDrop.Cli -- health    # version, identity, capabilities
+dotnet run --project src/LightDrop.Cli -- peers     # nearby devices seen over mDNS
+```
+
+`health` reports `No LightDrop daemon is reachable` when nothing is listening — that is the normal
+answer, not a crash.
+
+### Environment variables
+
+All three are development escape hatches. LightDrop needs none of them to run.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LIGHTDROP_HOST` | `127.0.0.1` | Kestrel listen address. Loopback by design — see below. |
+| `LIGHTDROP_PORT` | `5533` | Kestrel listen port. |
+| `LIGHTDROP_DATA_DIR` | `%APPDATA%\LightDrop` (Windows) / `~/Library/Application Support/LightDrop` (macOS) | Where `config.json` and `state.json` live. |
+
+The HTTP endpoint binds to loopback on purpose: nothing is paired yet, so binding to the LAN would
+expose an unauthenticated endpoint to every device on the network. Discovery does not need it —
+peer metadata rides in mDNS TXT records.
+
+### Two daemons on one machine
+
+Discovery can be exercised without a second computer, but each daemon needs its **own port and its
+own data directory**. Sharing `state.json` would give both the same device id, and each would
+dismiss the other's announcements as its own.
+
+```bash
+# terminal 1
+LIGHTDROP_PORT=5533 LIGHTDROP_DATA_DIR=/tmp/ld-a dotnet run --project src/LightDrop.Cli -- daemon
+
+# terminal 2
+LIGHTDROP_PORT=5534 LIGHTDROP_DATA_DIR=/tmp/ld-b dotnet run --project src/LightDrop.Cli -- daemon
+
+# terminal 3
+LIGHTDROP_PORT=5533 dotnet run --project src/LightDrop.Cli -- peers
+```
+
+On PowerShell, set the variables first — the inline `VAR=value cmd` form is Bash only:
+
+```powershell
+$env:LIGHTDROP_PORT = "5534"
+$env:LIGHTDROP_DATA_DIR = "$env:TEMP\ld-b"
+dotnet run --project src/LightDrop.Cli -- daemon
+```
+
+### Publish the single executable
+
+`LightDrop.Cli` is the only executable in the solution; the daemon is a library it hosts
+in-process. One command produces one self-contained, trimmed file with no .NET runtime
+prerequisite:
+
+```bash
+# Windows
+dotnet publish src/LightDrop.Cli -c Release -r win-x64 --self-contained \
+  -p:PublishSingleFile=true -p:PublishTrimmed=true
+
+# macOS (Apple Silicon)
+dotnet publish src/LightDrop.Cli -c Release -r osx-arm64 --self-contained \
+  -p:PublishSingleFile=true -p:PublishTrimmed=true
+```
+
+The binary lands in `src/LightDrop.Cli/bin/Release/net10.0/<rid>/publish/` as `lightdrop.exe`
+(~19 MB on Windows) or `lightdrop`. Copy it anywhere and run it — that is the whole install:
+
+```bash
+./lightdrop daemon
+```
+
+macOS release binaries still need an executable bit and a Gatekeeper story; that is an open gap,
+not a finished path.
+
 ## Goals
 
 - Automatic device discovery

@@ -91,7 +91,7 @@ static void PrintUsage(IEnumerable<ICliCommand> commands)
 
     Console.WriteLine();
     Console.WriteLine("Environment:");
-    Console.WriteLine($"  {DaemonEndpointOptions.HostEnvironmentVariable,-16}listen address (default {DaemonEndpointOptions.DefaultHost})");
-    Console.WriteLine($"  {DaemonEndpointOptions.PortEnvironmentVariable,-16}listen port (default {DaemonEndpointOptions.DefaultPort})");
-    Console.WriteLine($"  {DaemonCommand.DataDirectoryEnvironmentVariable,-16}config and state location");
+    Console.WriteLine($"  {DaemonEndpointOptions.HostEnvironmentVariable,-20}listen address (default {DaemonEndpointOptions.DefaultHost})");
+    Console.WriteLine($"  {DaemonEndpointOptions.PortEnvironmentVariable,-20}listen port (default {DaemonEndpointOptions.DefaultPort})");
+    Console.WriteLine($"  {DaemonCommand.DataDirectoryEnvironmentVariable,-20}config and state location");
 }

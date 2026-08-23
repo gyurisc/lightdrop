@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         // Registered as concrete types: each has a single implementation and nothing substitutes
         // them, including in tests. Interfaces here are reserved for genuine ports.
         services.AddSingleton<DeviceIdentityProvider>();
+        services.AddSingleton<DeviceKeyProvider>();
         services.AddSingleton<HealthService>();
 
         return services;

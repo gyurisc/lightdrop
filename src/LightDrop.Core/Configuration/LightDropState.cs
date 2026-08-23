@@ -16,6 +16,16 @@ public sealed record LightDropState
     public string? DeviceId { get; init; }
 
     /// <summary>
+    /// This device's private key, PKCS#8 DER, base64-encoded. Null only before first run.
+    /// </summary>
+    /// <remarks>
+    /// The one genuinely secret value LightDrop stores, and the reason <c>state.json</c> is
+    /// created <c>0600</c> on Unix. Only the key is kept — the certificate presenting it is
+    /// reissued on every start, because pairing pins the public key rather than the certificate.
+    /// </remarks>
+    public string? DeviceKey { get; init; }
+
+    /// <summary>
     /// Peers this device has completed pairing with.
     /// </summary>
     public IReadOnlyList<TrustedPeer> TrustedPeers { get; init; } = [];

@@ -36,6 +36,7 @@ services.AddHttpClient();
 services.AddSingleton<ICliCommand, DaemonCommand>();
 services.AddSingleton<ICliCommand, HealthCommand>();
 services.AddSingleton<ICliCommand, PeersCommand>();
+services.AddSingleton<ICliCommand, UiCommand>();
 
 await using var provider = services.BuildServiceProvider();
 

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using LightDrop.Core;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
@@ -85,6 +86,28 @@ public static class LightDropDaemon
             // Windows and a terminating service manager on macOS.
             await app.WaitForShutdownAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Whether a startup failure was the port already being in use.
+    /// </summary>
+    /// <remarks>
+    /// Kestrel reports this as an <see cref="IOException"/> wrapping the socket error, so the
+    /// chain has to be walked rather than the outermost type matched. Narrow on purpose: a
+    /// permission failure must not be reported as "already running", which would send the user to
+    /// a browser tab instead of telling them what actually went wrong.
+    /// </remarks>
+    public static bool IsAddressInUse(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ConfigureLogging(WebApplicationBuilder builder)

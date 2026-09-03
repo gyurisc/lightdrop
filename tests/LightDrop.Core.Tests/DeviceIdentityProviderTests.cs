@@ -40,6 +40,7 @@ public sealed class DeviceIdentityProviderTests
         {
             DeviceId = "peer-1",
             DeviceName = "MacBook Air",
+            PublicKey = "cGVlci0xLWtleQ==",
             PairedAt = DateTimeOffset.UnixEpoch,
         };
         var stateStore = new InMemoryStateStore(new LightDropState { TrustedPeers = [peer] });

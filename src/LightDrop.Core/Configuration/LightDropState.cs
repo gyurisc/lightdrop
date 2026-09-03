@@ -35,15 +35,26 @@ public sealed record LightDropState
 /// A peer this device has paired with.
 /// </summary>
 /// <remarks>
-/// Placeholder shape. This will gain key material once the pairing handshake is designed —
-/// pairing is the one part of v1 that cannot be retrofitted, so it gets its own design pass
-/// before implementation.
+/// The device id says who a peer claims to be; <see cref="PublicKey"/> is what proves it. The two
+/// are stored separately on purpose, so a future key rotation does not destroy the human-facing
+/// identity, and so a spoofed id in an mDNS record buys an attacker nothing.
 /// </remarks>
 public sealed record TrustedPeer
 {
     public required string DeviceId { get; init; }
 
     public required string DeviceName { get; init; }
+
+    /// <summary>
+    /// The peer's DER SubjectPublicKeyInfo, base64-encoded, pinned at pairing.
+    /// </summary>
+    /// <remarks>
+    /// Not a secret — a public key crosses the network in the clear during every TLS handshake.
+    /// The full key is kept rather than a fingerprint because the pairing code is derived from
+    /// the key bytes: storing only a hash would make an existing pairing impossible to re-verify
+    /// without unpairing first.
+    /// </remarks>
+    public required string PublicKey { get; init; }
 
     public required DateTimeOffset PairedAt { get; init; }
 }

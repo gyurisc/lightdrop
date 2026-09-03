@@ -19,6 +19,7 @@ public sealed class JsonStateStoreTests
             {
                 DeviceId = peerId,
                 DeviceName = "MacBook Air",
+                PublicKey = "cGVlci0xLXB1YmxpYy1rZXk=",
                 PairedAt = DateTimeOffset.UnixEpoch,
             },
         ],
@@ -52,6 +53,11 @@ public sealed class JsonStateStoreTests
         var peer = Assert.Single(loaded.TrustedPeers);
         Assert.Equal("peer-1", peer.DeviceId);
         Assert.Equal("MacBook Air", peer.DeviceName);
+
+        // The pinned key must survive the round trip: JSON source generation fails at runtime
+        // rather than at build, so a property the context does not emit would silently disarm
+        // every trust check on the next start.
+        Assert.Equal("cGVlci0xLXB1YmxpYy1rZXk=", peer.PublicKey);
         Assert.Equal(DateTimeOffset.UnixEpoch, peer.PairedAt);
     }
 

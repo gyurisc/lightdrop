@@ -21,8 +21,26 @@ public sealed class LoopbackOriginPolicyTests
     [Fact]
     public void AllowsReadsFromAnywhere()
     {
-        // Reads expose nothing a local page could not already learn, and blocking them would
-        // break the page itself.
+        // A foreign Origin on a read is allowed as long as Host is correct: the page itself sends
+        // an Origin, and a legitimate cross-origin read of a public endpoint must not break.
+        Assert.True(LoopbackOriginPolicy.IsAllowed("GET", "https://evil.example", "127.0.0.1:5533", Endpoint));
+    }
+
+    [Fact]
+    public void RejectsAReadWithAForeignHost()
+    {
+        // This is the DNS-rebinding bug: a GET was exempt from the Host check entirely, so a name
+        // that resolves to 127.0.0.1 could read /health and /api/peers. Host must be validated
+        // before the method is allowed to shortcut anything.
+        Assert.False(LoopbackOriginPolicy.IsAllowed("GET", null, "attacker.example:5533", Endpoint));
+    }
+
+    [Fact]
+    public void AllowsAReadWithTheCorrectHostAndAForeignOrigin()
+    {
+        // The Origin rule only applies to non-safe methods. A correct Host plus a foreign Origin
+        // is still a legitimate local read — the page and any cross-origin read of a public GET
+        // endpoint must keep working.
         Assert.True(LoopbackOriginPolicy.IsAllowed("GET", "https://evil.example", "127.0.0.1:5533", Endpoint));
     }
 
@@ -96,6 +114,31 @@ public sealed class LoopbackOriginEndpointTests
             using var local = new HttpRequestMessage(HttpMethod.Post, "anything");
             using var routed = await client.SendAsync(local, cancellation.Token);
             Assert.Equal(HttpStatusCode.NotFound, routed.StatusCode);
+
+            await app.StopAsync(cancellation.Token);
+        }
+    }
+
+    [Fact]
+    public async Task RejectsAGetWithAForeignHostOverRealHttp()
+    {
+        // The DNS-rebinding regression this whole finding is about: a GET with a foreign Host
+        // header must be rejected over real HTTP, not just in the policy's unit tests.
+        using var directory = new TempDataDirectory();
+        var endpoint = new DaemonEndpointOptions { Host = "127.0.0.1", Port = FreeTcpPort.Get() };
+        using var cancellation = new CancellationTokenSource();
+
+        var app = LightDropDaemon.Create(endpoint, directory.FullPath, new NoOpPeerDiscoveryTransport());
+        await using (app.ConfigureAwait(false))
+        {
+            await app.StartAsync(cancellation.Token);
+
+            using var client = new HttpClient { BaseAddress = endpoint.ClientAddress };
+
+            using var hostile = new HttpRequestMessage(HttpMethod.Get, "health");
+            hostile.Headers.Host = "attacker.example:15534";
+            using var rejected = await client.SendAsync(hostile, cancellation.Token);
+            Assert.Equal(HttpStatusCode.Forbidden, rejected.StatusCode);
 
             await app.StopAsync(cancellation.Token);
         }

@@ -21,8 +21,23 @@ internal static class UiEndpoints
     {
         var page = LoadPage();
 
-        endpoints.MapGet("/", FileContentHttpResult () =>
-            TypedResults.Bytes(page, "text/html; charset=utf-8"))
+        endpoints.MapGet("/", (HttpContext context) =>
+        {
+            // frame-ancestors 'none' blocks framing outright: Phase B puts a pairing confirm
+            // button on this page, and a clickjacked click would carry a genuine same-origin
+            // Origin header that LoopbackOriginPolicy has no way to tell apart from a real one.
+            // The rest of the policy is minimal — this page has no external resources — with
+            // 'unsafe-inline' only because the style and script are inline in index.html.
+            context.Response.Headers.ContentSecurityPolicy =
+                "default-src 'self'; frame-ancestors 'none'; style-src 'self' 'unsafe-inline'; " +
+                "script-src 'self' 'unsafe-inline'";
+
+            // Stops a browser from sniffing the response into something other than the declared
+            // text/html content type.
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+
+            return TypedResults.Bytes(page, "text/html; charset=utf-8");
+        })
             .WithName("Ui");
 
         return endpoints;

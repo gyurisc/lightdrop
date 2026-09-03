@@ -38,9 +38,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+# Single-quoted, with embedded single quotes escaped, so the path lands in the launcher as a
+# shell string literal -- backticks or $(...) in it must never be interpreted by the launcher.
+QUOTED_BINARY="'$(printf '%s' "$BINARY" | sed "s/'/'\\\\''/g")'"
+
 cat > "$APP/Contents/MacOS/LightDrop" <<LAUNCHER
 #!/bin/sh
-exec "$BINARY" ui
+exec $QUOTED_BINARY ui
 LAUNCHER
 
 chmod +x "$APP/Contents/MacOS/LightDrop"

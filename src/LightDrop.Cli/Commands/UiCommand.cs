@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Net.Sockets;
 using LightDrop.Core.Configuration;
 using Microsoft.Extensions.Hosting;
 

@@ -273,5 +273,13 @@ or Avalonia shell would supply one for free.
 
 **An origin check shipped before anything needed it.** Loopback binding keeps other devices out and
 does nothing about the browser on this machine: any page the user has open can post to 127.0.0.1.
-Phase A has no write endpoint, so the check guards nothing today — that is the point. A check added
-alongside the first write endpoint is a check the second one has to remember.
+The check validates `Host` on every request, reads included — DNS rebinding lets an
+attacker-controlled name resolve to 127.0.0.1, and such a request looks local while carrying the
+attacker's `Host`, which is the one thing a hostile page cannot forge to match. `Origin` is checked
+in addition for writes, since `Host` alone would let any page on this machine post to the daemon.
+Phase A has no write endpoint and its only read is `/health`, so the check guards little today —
+that is the point. A check added alongside the first write endpoint, or the first endpoint that
+returns something worth stealing, is a check the second one has to remember. (An earlier version of
+this check exempted all reads from `Host` validation on the theory that a local page could already
+learn anything a `GET` exposes; that reasoning did not hold once `Host` itself was the attack
+surface, and it was rejected during final review before Phase A shipped.)

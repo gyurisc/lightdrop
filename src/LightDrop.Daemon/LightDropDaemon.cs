@@ -77,6 +77,10 @@ public static class LightDropDaemon
         CancellationToken cancellationToken = default,
         IPeerDiscoveryTransport? peerDiscoveryTransport = null)
     {
+        // UiCommand duplicates this body rather than calling it: it needs to catch a bind failure
+        // from StartAsync specifically (to fall back to "already running, opening a browser tab"),
+        // which a shared helper covering both StartAsync and WaitForShutdownAsync could not do
+        // without changing this method's own error handling. Keep the two in sync by hand.
         var app = Create(endpoint, dataDirectory, peerDiscoveryTransport);
         await using (app.ConfigureAwait(false))
         {

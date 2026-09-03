@@ -7,6 +7,7 @@ using LightDrop.Core.Discovery;
 using LightDrop.Daemon.Discovery;
 using LightDrop.Daemon.Endpoints;
 using LightDrop.Daemon.Infrastructure;
+using LightDrop.Daemon.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,6 +54,7 @@ public static class LightDropDaemon
         ConfigureServices(builder, endpoint, dataDirectory, peerDiscoveryTransport);
 
         var app = builder.Build();
+        app.UseLoopbackOriginCheck(endpoint);
         app.MapHealthEndpoints();
         app.MapPeerEndpoints();
         return app;

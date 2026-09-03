@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using LightDrop.Core;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
@@ -7,6 +8,7 @@ using LightDrop.Core.Discovery;
 using LightDrop.Daemon.Discovery;
 using LightDrop.Daemon.Endpoints;
 using LightDrop.Daemon.Infrastructure;
+using LightDrop.Daemon.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,6 +55,8 @@ public static class LightDropDaemon
         ConfigureServices(builder, endpoint, dataDirectory, peerDiscoveryTransport);
 
         var app = builder.Build();
+        app.UseLoopbackOriginCheck(endpoint);
+        app.MapUiEndpoints();
         app.MapHealthEndpoints();
         app.MapPeerEndpoints();
         return app;
@@ -73,6 +77,10 @@ public static class LightDropDaemon
         CancellationToken cancellationToken = default,
         IPeerDiscoveryTransport? peerDiscoveryTransport = null)
     {
+        // UiCommand duplicates this body rather than calling it: it needs to catch a bind failure
+        // from StartAsync specifically (to fall back to "already running, opening a browser tab"),
+        // which a shared helper covering both StartAsync and WaitForShutdownAsync could not do
+        // without changing this method's own error handling. Keep the two in sync by hand.
         var app = Create(endpoint, dataDirectory, peerDiscoveryTransport);
         await using (app.ConfigureAwait(false))
         {
@@ -82,6 +90,28 @@ public static class LightDropDaemon
             // Windows and a terminating service manager on macOS.
             await app.WaitForShutdownAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Whether a startup failure was the port already being in use.
+    /// </summary>
+    /// <remarks>
+    /// Kestrel reports this as an <see cref="IOException"/> wrapping the socket error, so the
+    /// chain has to be walked rather than the outermost type matched. Narrow on purpose: a
+    /// permission failure must not be reported as "already running", which would send the user to
+    /// a browser tab instead of telling them what actually went wrong.
+    /// </remarks>
+    public static bool IsAddressInUse(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ConfigureLogging(WebApplicationBuilder builder)

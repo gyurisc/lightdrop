@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LightDrop</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 44rem; margin: 3rem auto; padding: 0 1.5rem;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  .status { color: #666; margin-bottom: 2rem; }
+  .status.down { color: #b3261e; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 600; font-size: .8rem; text-transform: uppercase;
+       letter-spacing: .04em; color: #666; border-bottom: 1px solid #8884; padding: .5rem 0; }
+  td { padding: .6rem 0; border-bottom: 1px solid #8882; }
+  .empty { color: #666; padding: 1.5rem 0; }
+</style>
+</head>
+<body>
+  <h1>LightDrop</h1>
+  <p class="status" id="status">Connecting…</p>
+
+  <h2 style="font-size:1rem">Nearby devices</h2>
+  <table>
+    <thead><tr><th>Device</th><th>Platform</th><th>Address</th></tr></thead>
+    <tbody id="peers"></tbody>
+  </table>
+  <p class="empty" id="empty" hidden>No devices found yet.</p>
+
+<script>
+const status = document.getElementById('status');
+const peers = document.getElementById('peers');
+const empty = document.getElementById('empty');
+
+function text(value) {
+  const cell = document.createElement('td');
+  // textContent, never innerHTML: every value here originated in an mDNS record put on the
+  // network by someone else.
+  cell.textContent = value ?? '';
+  return cell;
+}
+
+async function refresh() {
+  try {
+    const [healthResponse, peersResponse] = await Promise.all([
+      fetch('health'), fetch('api/peers')
+    ]);
+    if (!healthResponse.ok || !peersResponse.ok) throw new Error('bad status');
+
+    const health = await healthResponse.json();
+    const peerList = await peersResponse.json();
+    const list = peerList.peers ?? [];
+
+    const discovery = peerList.discoveryRunning ? 'discovering' : 'discovery stopped';
+    status.textContent = `${health.deviceName} · ${discovery} · ${list.length} nearby`;
+    status.classList.remove('down');
+
+    peers.replaceChildren(...list.map(peer => {
+      const row = document.createElement('tr');
+      row.append(text(peer.deviceName), text(peer.platform), text(peer.address));
+      return row;
+    }));
+    empty.hidden = list.length > 0;
+  } catch {
+    // Say so rather than leaving a stale list on screen looking current.
+    status.textContent = 'Daemon unreachable.';
+    status.classList.add('down');
+  }
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

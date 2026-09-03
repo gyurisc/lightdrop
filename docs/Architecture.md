@@ -27,6 +27,10 @@ Owns:
 - platform-specific path resolution
 - networking implementations (as they arrive)
 
+The daemon also serves the page `lightdrop ui` opens: one `index.html` embedded in the assembly,
+plus an origin check that rejects non-GET requests which did not come from it. The page is a client
+of the same loopback HTTP the CLI uses — it adds no API of its own and no LAN-reachable surface.
+
 ### LightDrop.Core — platform independent
 
 No ASP.NET Core dependency. No filesystem access. No OS-specific APIs.

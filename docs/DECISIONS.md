@@ -249,3 +249,29 @@ machine's subnets needs interface enumeration, which Core is not allowed to do, 
 little: the residual risk is a peer naming another machine on the same link, which can announce for
 itself regardless.
 
+---
+
+### 24. The UI is a web page, and there is no tray icon
+
+LightDrop needed something to look at. The cheap answer and the expensive one differ by a large
+dependency and roughly triple the binary, so it was worth deciding rather than drifting.
+
+**A page served by the Kestrel already running.** One `index.html` embedded in the assembly, served
+by one endpoint, polling the health and peers endpoints that already exist. It adds no dependency,
+no size and no trim risk, and both platforms work the day it is written — which is what makes
+"macOS later" free rather than a second project. Avalonia is the right answer if a polished native
+app is the product; here it buys polish against value that does not exist until file transfer does.
+A webview shell would wrap this same HTML, so starting in the browser forecloses nothing.
+
+**No tray icon.** It is two separate implementations. On Windows `NotifyIcon` brings a Windows-only
+target framework and sits badly with trimming, so doing it properly means `Shell_NotifyIcon` through
+P/Invoke, with a hidden window and a message pump. On macOS it means `NSStatusItem`, so AppKit
+interop and a run loop that wants the main thread — there is no small path to the second one. All of
+it buys "the daemon is running", which the page says as it loads. A shortcut and a minimal `.app`
+bundle cover launching it, and a tray earns its place at M3 alongside notifications, when a webview
+or Avalonia shell would supply one for free.
+
+**An origin check shipped before anything needed it.** Loopback binding keeps other devices out and
+does nothing about the browser on this machine: any page the user has open can post to 127.0.0.1.
+Phase A has no write endpoint, so the check guards nothing today — that is the point. A check added
+alongside the first write endpoint is a check the second one has to remember.

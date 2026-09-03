@@ -142,6 +142,30 @@ The binary lands in `src/LightDrop.Cli/bin/Release/net10.0/<rid>/publish/` as `l
 macOS release binaries still need an executable bit and a Gatekeeper story; that is an open gap,
 not a finished path.
 
+## The page
+
+`lightdrop ui` runs the daemon and opens a browser at <http://127.0.0.1:5533>, showing this
+device's status and the machines it can see nearby. Ctrl+C stops it — closing the browser tab does
+not, because the daemon has to keep running for this machine to stay visible to its peers.
+
+If a daemon is already running it opens the page against that one and exits.
+
+### Launching it without a terminal
+
+**macOS** — build a double-clickable bundle:
+
+```bash
+./packaging/macos/make-app-bundle.sh path/to/lightdrop ~/Applications
+```
+
+**Windows** — add a Start Menu entry, then pin it to the taskbar:
+
+```powershell
+.\packaging\windows\create-shortcut.ps1 -Binary C:\tools\lightdrop.exe
+```
+
+Neither installs anything. They point at the executable wherever you already keep it.
+
 ## Goals
 
 - Automatic device discovery

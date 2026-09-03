@@ -55,6 +55,7 @@ public static class LightDropDaemon
 
         var app = builder.Build();
         app.UseLoopbackOriginCheck(endpoint);
+        app.MapUiEndpoints();
         app.MapHealthEndpoints();
         app.MapPeerEndpoints();
         return app;

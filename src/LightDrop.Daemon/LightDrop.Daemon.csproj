@@ -24,6 +24,13 @@
     <ProjectReference Include="..\LightDrop.Core\LightDrop.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Compiled into the assembly rather than published beside it: LightDrop ships as a single
+         executable, so there is no content directory to serve from. LogicalName is pinned so the
+         resource name does not move if the folder is renamed. -->
+    <EmbeddedResource Include="Ui/index.html" LogicalName="LightDrop.Daemon.Ui.index.html" />
+  </ItemGroup>
+
   <!-- LoopbackOriginPolicy is internal on purpose: it is an implementation detail of this
        library, not a port other assemblies should consume. Its unit tests call it directly
        rather than only through HTTP, so the test assembly needs access. -->

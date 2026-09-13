@@ -85,6 +85,26 @@ public sealed class DeviceKeyProviderTests
     }
 
     [Fact]
+    public async Task IssuesACertificateWhosePrivateKeySignsAndVerifies()
+    {
+        // The property TLS actually needs. A certificate can carry a private key handle that looks
+        // present and still be unusable by SslStream -- on Windows an ephemeral CNG key from
+        // CreateSelfSigned is exactly that. Signing with it here is the closest platform-neutral
+        // proxy for "a TLS handshake can use this".
+        var keyPair = await new DeviceKeyProvider(new InMemoryStateStore()).GetAsync(CancellationToken.None);
+
+        using var privateKey = keyPair.Certificate.GetECDsaPrivateKey();
+        Assert.NotNull(privateKey);
+
+        var payload = "lightdrop"u8.ToArray();
+        var signature = privateKey.SignData(payload, HashAlgorithmName.SHA256);
+
+        using var publicKey = keyPair.Certificate.GetECDsaPublicKey();
+        Assert.NotNull(publicKey);
+        Assert.True(publicKey.VerifyData(payload, signature, HashAlgorithmName.SHA256));
+    }
+
+    [Fact]
     public async Task ResolvesOnceUnderConcurrentCallers()
     {
         var store = new InMemoryStateStore();

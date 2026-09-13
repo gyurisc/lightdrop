@@ -112,6 +112,33 @@ public sealed class DeviceKeyProvider(IStateStore stateStore)
         // long as the process does.
         var certificate = request.CreateSelfSigned(now.AddHours(-1), now.Add(CertificateLifetime));
 
-        return new DeviceKeyPair(certificate, key.ExportSubjectPublicKeyInfo());
+        return new DeviceKeyPair(MakeUsableByTls(certificate), key.ExportSubjectPublicKeyInfo());
+    }
+
+    /// <summary>
+    /// Returns a certificate whose private key <see cref="System.Net.Security.SslStream"/> will use.
+    /// </summary>
+    /// <remarks>
+    /// On Windows, <see cref="CertificateRequest.CreateSelfSigned"/> attaches the private key as an
+    /// ephemeral CNG key, and the TLS stack can refuse it with an error that does not name the
+    /// cause. A PKCS#12 round trip materialises the key in a form it accepts. Guarded rather than
+    /// applied everywhere, matching how the state store guards <c>UnixCreateMode</c>: on macOS the
+    /// original certificate already works, and the round trip would be pure cost.
+    /// </remarks>
+    private static X509Certificate2 MakeUsableByTls(X509Certificate2 certificate)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return certificate;
+        }
+
+        using (certificate)
+        {
+            // No password: the bytes exist only for the length of this call and never touch disk.
+            return X509CertificateLoader.LoadPkcs12(
+                certificate.Export(X509ContentType.Pkcs12),
+                password: null,
+                X509KeyStorageFlags.EphemeralKeySet);
+        }
     }
 }

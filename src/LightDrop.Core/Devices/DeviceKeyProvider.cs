@@ -120,10 +120,24 @@ public sealed class DeviceKeyProvider(IStateStore stateStore)
     /// </summary>
     /// <remarks>
     /// On Windows, <see cref="CertificateRequest.CreateSelfSigned"/> attaches the private key as an
-    /// ephemeral CNG key, and the TLS stack can refuse it with an error that does not name the
-    /// cause. A PKCS#12 round trip materialises the key in a form it accepts. Guarded rather than
-    /// applied everywhere, matching how the state store guards <c>UnixCreateMode</c>: on macOS the
-    /// original certificate already works, and the round trip would be pure cost.
+    /// ephemeral CNG key, and Schannel refuses to use it for a handshake, surfacing as
+    /// <c>0x8009030E</c> ("No credentials are available in the security package") rather than
+    /// anything naming the real cause. A PKCS#12 round trip materialises the key in a form
+    /// Schannel accepts.
+    /// <para>
+    /// Deliberately <em>not</em> <see cref="X509KeyStorageFlags.EphemeralKeySet"/>: that flag looks
+    /// like the obvious fix but keeps the key in-memory-only, which is the same condition Schannel
+    /// was just refusing -- it does not fix this failure, it reproduces it.
+    /// </para>
+    /// <para>
+    /// Also deliberately without <see cref="X509KeyStorageFlags.PersistKeySet"/>: without it,
+    /// Windows drops the temporary CNG key container when the certificate is disposed. This runs
+    /// once per daemon start, so persisting the key set would leak one container per restart.
+    /// </para>
+    /// Guarded rather than applied everywhere, matching how the state store guards
+    /// <c>UnixCreateMode</c>: on macOS the original certificate already works, and the round trip
+    /// would be pure cost. <strong>Unverified on Windows</strong> -- no one has run this against a
+    /// real handshake there yet.
     /// </remarks>
     private static X509Certificate2 MakeUsableByTls(X509Certificate2 certificate)
     {
@@ -138,7 +152,7 @@ public sealed class DeviceKeyProvider(IStateStore stateStore)
             return X509CertificateLoader.LoadPkcs12(
                 certificate.Export(X509ContentType.Pkcs12),
                 password: null,
-                X509KeyStorageFlags.EphemeralKeySet);
+                X509KeyStorageFlags.Exportable);
         }
     }
 }

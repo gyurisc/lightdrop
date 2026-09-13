@@ -44,9 +44,10 @@ internal static class PairingTls
         // nothing to decide about and the handshake should end here.
         https.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
 
-        // Kestrel will not even call this unless the chain check is waived, and the chain can
-        // never build for a self-signed peer certificate.
-        https.AllowAnyClientCertificate();
+        // A non-null ClientCertificateValidation replaces Kestrel's default chain verdict
+        // entirely -- it is not additive with it, and needs no separate waiver call. That is what
+        // we want here: the chain can never build for a self-signed peer certificate, so the only
+        // verdict that matters is this one.
         https.ClientCertificateValidation = (certificate, _, _) =>
             PinnedCertificate.Matches(certificate, expectedPeerPublicKeyInfo);
     }

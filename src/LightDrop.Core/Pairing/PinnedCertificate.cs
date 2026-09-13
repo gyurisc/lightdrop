@@ -45,10 +45,16 @@ public static class PinnedCertificate
         catch (CryptographicException)
         {
             // presented is attacker-controlled: it came off the wire during a TLS handshake, not
-            // out of anything this device constructed. A key algorithm .NET cannot model, or an
-            // encoded key/parameters blob that does not round-trip, means the export throws here
-            // instead of in ordinary use. A TLS callback is the wrong place to let that escape --
-            // it does not fail the handshake, it crashes it, hiding the real cause. Not a match.
+            // out of anything this device constructed. A TLS callback is the wrong place to let
+            // an export failure escape -- it does not fail the handshake, it crashes it, hiding
+            // the real cause. Not a match.
+            //
+            // Deliberately untested, not dead: no certificate that actually parses has been found
+            // to throw here -- RSA, Ed25519, and explicit-curve EC were all constructed and all
+            // exported cleanly. A SubjectPublicKeyInfo broken enough to fail export appears to also
+            // fail certificate parsing itself, before any of this code runs, so the throwing input
+            // this guards against cannot arrive through TLS. It stays as defence-in-depth against
+            // that boundary being wrong, not as a branch this test suite can reach.
             return false;
         }
 

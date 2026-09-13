@@ -33,6 +33,12 @@ public sealed class PairingKeys : IAsyncLifetime
 
     public Task DisposeAsync()
     {
+        // The provider hands out the certificate it caches; nothing else in this fixture's
+        // lifetime owns it, so disposing it here is the only place it happens.
+        Alice.Certificate.Dispose();
+        Bob.Certificate.Dispose();
+        Impostor.Certificate.Dispose();
+
         foreach (var directory in _directories)
         {
             directory.Dispose();

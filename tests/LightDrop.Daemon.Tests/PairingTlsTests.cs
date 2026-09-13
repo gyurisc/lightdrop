@@ -97,6 +97,21 @@ public sealed class PairingTlsTests(PairingKeys keys) : IClassFixture<PairingKey
     }
 
     [Fact]
+    public async Task CreateHandlerAcceptsTheBase64FormOfThePin()
+    {
+        // Pins are stored base64 in state.json (TrustedPeer.PublicKey). This overload exists so
+        // the next caller does not have to reintroduce Convert.FromBase64String -- and the throw
+        // it brings back -- to get from a stored pin to this method.
+        await using var listener = await PinnedListener.StartAsync(keys.Alice, keys.Bob.PublicKeyInfo);
+
+        using var handler = PairingTls.CreateHandler(
+            keys.Bob, Convert.ToBase64String(keys.Alice.PublicKeyInfo));
+        using var client = new HttpClient(handler) { BaseAddress = listener.Address };
+
+        Assert.Equal("lightdrop", await client.GetStringAsync("pair/hello", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task NegotiatesAtLeastTls12()
     {
         // The version is deliberately not forced, so this asserts a floor rather than a value.

@@ -283,3 +283,34 @@ returns something worth stealing, is a check the second one has to remember. (An
 this check exempted all reads from `Host` validation on the theory that a local page could already
 learn anything a `GET` exposes; that reasoning did not hold once `Host` itself was the attack
 surface, and it was rejected during final review before Phase A shipped.)
+
+---
+
+### 25. A Windows-only key round trip landed in Core, and stays there
+
+`DeviceKeyProvider.MakeUsableByTls` calls `OperatingSystem.IsWindows()` and does a PKCS#12 export
+and reload — platform-conditional behaviour, in `LightDrop.Core`, whose stated rule is platform
+independence. That looks like the same mistake `JsonStateStore`'s `UnixCreateMode` guard was built
+to avoid making twice.
+
+**It stays, on purpose.** The `UnixCreateMode` precedent is about *where* platform behaviour is
+allowed to live: I/O is the Daemon's job, so a guard over a file-creation flag belongs there. This
+is not I/O — it is a transformation of key material the certificate is built from, and `DeviceKeyPair`
+already lives in Core because pairing's trust decision (`PinnedCertificate`, `PairingService`) has
+to reason about that key material without depending on ASP.NET Core or the filesystem. Moving the
+round trip to the Daemon would either split key handling across two projects for one method, or
+force `DeviceKeyProvider` itself into the Daemon — dragging `IStateStore`'s consumer, and the
+get-or-create logic this file exists to keep testable, along with it.
+
+**What actually justifies staying in Core**: `OperatingSystem.IsWindows()` compiles and runs
+correctly on every target — it is not a Windows-only API surface, just a Windows-only code path —
+and `X509CertificateLoader.LoadPkcs12` is available on all three platforms LightDrop ships with no
+AOT or trim risk. Nothing here reaches the filesystem, the network, or an OS-specific handle; the
+only difference from the constant-folded branches Core already tolerates is that this one is a
+runtime check rather than a compile-time one.
+
+**What would not be excused by this precedent**: a `P/Invoke` call, a `RuntimeInformation` switch
+selecting between OS-specific libraries, or anything that touches a file, socket, or handle.
+Those belong in the Daemon regardless of how small they look, on the same reasoning that put
+`UnixCreateMode` there. Citing decision 25 to justify one of those in Core is the drift this entry
+exists to head off.

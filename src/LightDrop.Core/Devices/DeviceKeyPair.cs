@@ -20,7 +20,10 @@ public sealed class DeviceKeyPair(X509Certificate2 certificate, byte[] publicKey
     /// </summary>
     /// <remarks>
     /// Lives for the lifetime of the process. Not disposed here: it is resolved once and handed
-    /// to whatever opens a connection, so ownership stays with the provider that cached it.
+    /// to whatever opens a connection, so ownership stays with the provider that cached it. On
+    /// Windows this is not the object <see cref="CertificateRequest.CreateSelfSigned"/> produced —
+    /// the provider disposes that one and replaces it with a PKCS#12 round trip Schannel can use —
+    /// but by the time it reaches here it is, once again, a value this type does not own.
     /// </remarks>
     public X509Certificate2 Certificate { get; } = certificate;
 

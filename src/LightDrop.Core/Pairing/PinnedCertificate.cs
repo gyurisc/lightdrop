@@ -68,28 +68,46 @@ public static class PinnedCertificate
     /// <remarks>
     /// A malformed pin returns false rather than throwing. A corrupt state file should fail the
     /// handshake — which the user can act on — not tear down the connection with an exception from
-    /// inside a TLS callback, where the real cause would be invisible.
-    /// <para>
-    /// The decode buffer is heap-allocated rather than <c>stackalloc</c>'d at the input's length:
-    /// the decoded length is always smaller than the encoded string, but nothing here bounds the
-    /// encoded string itself. A corrupt <c>state.json</c> with an unexpectedly long value must fail
-    /// the handshake, not risk a <see cref="StackOverflowException"/> — which is unrecoverable and
-    /// would crash the daemon outright, the opposite of failing closed.
-    /// </para>
+    /// inside a TLS callback, where the real cause would be invisible. See
+    /// <see cref="TryDecodePin"/> for why the decode itself never throws.
     /// </remarks>
     public static bool Matches(X509Certificate2 presented, string pinnedPublicKeyInfoBase64)
     {
-        if (string.IsNullOrWhiteSpace(pinnedPublicKeyInfoBase64))
+        return TryDecodePin(pinnedPublicKeyInfoBase64, out var pinned) && Matches(presented, pinned);
+    }
+
+    /// <summary>
+    /// Decodes a pin stored as base64 in <c>state.json</c>, failing closed rather than throwing.
+    /// </summary>
+    /// <remarks>
+    /// Shared by every place in Core that compares against a stored pin -- this type's own
+    /// <see cref="Matches(X509Certificate2, string)"/> and <see
+    /// cref="PairingService.IsTrustedAsync"/> -- so a corrupt pin fails the operation it gates
+    /// instead of throwing from inside a caller. That matters most here: one caller runs inside a
+    /// TLS validation callback, where an escaping exception crashes the handshake rather than
+    /// failing it, hiding the real cause.
+    /// <para>
+    /// The decode buffer is heap-allocated at the input's length rather than <c>stackalloc</c>'d,
+    /// for the same reason as the caller above: nothing bounds how long a corrupt stored value
+    /// could be, and a stack overflow is an unrecoverable crash, the opposite of failing closed.
+    /// </para>
+    /// </remarks>
+    internal static bool TryDecodePin(string? base64, out byte[] decoded)
+    {
+        if (string.IsNullOrWhiteSpace(base64))
         {
+            decoded = [];
             return false;
         }
 
-        var pinned = new byte[pinnedPublicKeyInfoBase64.Length];
-        if (!Convert.TryFromBase64String(pinnedPublicKeyInfoBase64, pinned, out var written))
+        var buffer = new byte[base64.Length];
+        if (!Convert.TryFromBase64String(base64, buffer, out var written))
         {
+            decoded = [];
             return false;
         }
 
-        return Matches(presented, pinned.AsSpan(0, written));
+        decoded = buffer.AsSpan(0, written).ToArray();
+        return true;
     }
 }

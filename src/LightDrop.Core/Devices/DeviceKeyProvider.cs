@@ -108,8 +108,10 @@ public sealed class DeviceKeyProvider(IStateStore stateStore)
         var now = DateTimeOffset.UtcNow;
 
         // Backdated an hour so a peer whose clock runs slightly behind does not reject a
-        // certificate issued moments ago. Not disposed: it is handed to the caller and lives as
-        // long as the process does.
+        // certificate issued moments ago. On macOS this exact object is handed to the caller and
+        // lives as long as the process does; on Windows MakeUsableByTls disposes it and returns a
+        // replacement built from its exported bytes, so the object handed to the caller differs by
+        // platform even though the key it wraps does not.
         var certificate = request.CreateSelfSigned(now.AddHours(-1), now.Add(CertificateLifetime));
 
         return new DeviceKeyPair(MakeUsableByTls(certificate), key.ExportSubjectPublicKeyInfo());
@@ -136,8 +138,10 @@ public sealed class DeviceKeyProvider(IStateStore stateStore)
     /// </para>
     /// Guarded rather than applied everywhere, matching how the state store guards
     /// <c>UnixCreateMode</c>: on macOS the original certificate already works, and the round trip
-    /// would be pure cost. <strong>Unverified on Windows</strong> -- no one has run this against a
-    /// real handshake there yet.
+    /// would be pure cost. Verified on Windows by CI, which runs <c>dotnet test</c> on
+    /// <c>windows-latest</c>; <c>PairingTlsTests</c> drives a real Kestrel HTTPS handshake using
+    /// this exact certificate, so the Windows path is exercised on every push even though
+    /// development happens on macOS and this was never run against a real handshake locally.
     /// </remarks>
     private static X509Certificate2 MakeUsableByTls(X509Certificate2 certificate)
     {
@@ -149,10 +153,17 @@ public sealed class DeviceKeyProvider(IStateStore stateStore)
         using (certificate)
         {
             // No password: the bytes exist only for the length of this call and never touch disk.
+            //
+            // DefaultKeySet, not Exportable: nothing here ever exports this private key --
+            // DeviceKeyPair exposes only the certificate and the *public* SPKI, and signing does
+            // not require an exportable key. DefaultKeySet satisfies Schannel just as well -- the
+            // problem this guards against was only ever EphemeralKeySet -- while leaving the
+            // device's one genuinely secret, long-lived value non-exportable from its CNG
+            // container. Free hardening with no cost to anything this type does.
             return X509CertificateLoader.LoadPkcs12(
                 certificate.Export(X509ContentType.Pkcs12),
                 password: null,
-                X509KeyStorageFlags.Exportable);
+                X509KeyStorageFlags.DefaultKeySet);
         }
     }
 }

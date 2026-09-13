@@ -26,6 +26,13 @@ public sealed class PairingService(IStateStore stateStore, TimeProvider timeProv
     /// put any id in an mDNS record — so the key is what the answer actually rests on. The
     /// comparison is constant-time: this runs against an attacker-supplied key, and a timing
     /// signal would leak how much of a pinned key a guess had right.
+    /// <para>
+    /// The stored pin is decoded through <see cref="PinnedCertificate.TryDecodePin"/> rather than
+    /// <c>Convert.FromBase64String</c> directly, so a corrupt <c>state.json</c> value fails this
+    /// check closed instead of throwing — the same guarantee <see
+    /// cref="PinnedCertificate.Matches(System.Security.Cryptography.X509Certificates.X509Certificate2, string)"/>
+    /// gives the TLS handshake, kept in one place so the two do not drift apart again.
+    /// </para>
     /// </remarks>
     public async ValueTask<bool> IsTrustedAsync(
         string deviceId,
@@ -45,9 +52,12 @@ public sealed class PairingService(IStateStore stateStore, TimeProvider timeProv
             return false;
         }
 
-        return CryptographicOperations.FixedTimeEquals(
-            Convert.FromBase64String(peer.PublicKey),
-            publicKey.Span);
+        if (!PinnedCertificate.TryDecodePin(peer.PublicKey, out var pinned))
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(pinned, publicKey.Span);
     }
 
     /// <summary>

@@ -133,6 +133,22 @@ public sealed class PairingServiceTests
     }
 
     [Fact]
+    public async Task ReturnsFalseForAPeerWithACorruptStoredPin()
+    {
+        // PairingService.IsTrustedAsync used to decode the stored pin with
+        // Convert.FromBase64String, which throws on a corrupt value -- exactly the failure
+        // PinnedCertificate.Matches(certificate, string) exists to avoid. A corrupt state.json
+        // must fail this check closed, not throw out of it.
+        var corrupt = new LightDropState
+        {
+            TrustedPeers = [new TrustedPeer { DeviceId = "peer-a", DeviceName = "Work Laptop", PublicKey = "not valid base64!!", PairedAt = Now }],
+        };
+        var service = Create(new InMemoryStateStore(corrupt));
+
+        Assert.False(await service.IsTrustedAsync("peer-a", KeyA, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task RefusesToPinAnEmptyKey()
     {
         // A peer with no key could never be verified again, so the entry would trust a device id

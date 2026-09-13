@@ -37,9 +37,22 @@ public static class PinnedCertificate
             return false;
         }
 
-        return CryptographicOperations.FixedTimeEquals(
-            presented.PublicKey.ExportSubjectPublicKeyInfo(),
-            pinnedPublicKeyInfo);
+        byte[] presentedSpki;
+        try
+        {
+            presentedSpki = presented.PublicKey.ExportSubjectPublicKeyInfo();
+        }
+        catch (CryptographicException)
+        {
+            // presented is attacker-controlled: it came off the wire during a TLS handshake, not
+            // out of anything this device constructed. A key algorithm .NET cannot model, or an
+            // encoded key/parameters blob that does not round-trip, means the export throws here
+            // instead of in ordinary use. A TLS callback is the wrong place to let that escape --
+            // it does not fail the handshake, it crashes it, hiding the real cause. Not a match.
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(presentedSpki, pinnedPublicKeyInfo);
     }
 
     /// <summary>

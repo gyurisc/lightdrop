@@ -72,6 +72,21 @@ public sealed class PinnedCertificateTests
         Assert.False(PinnedCertificate.Matches(certificate, "not base64 at all!!"));
     }
 
+    [Fact]
+    public void RejectsACertificateWithADifferentKeyAlgorithm()
+    {
+        // A real scenario, not just a defensive test: a peer that regenerated its identity with a
+        // different key type presents exactly this. It must be rejected like any other mismatch,
+        // not throw out of the export and take down the TLS callback with it.
+        using var pinned = CreateCertificate();
+        using var rsaKey = RSA.Create(2048);
+        var request = new CertificateRequest("CN=LightDrop", rsaKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var now = DateTimeOffset.UtcNow;
+        using var impostor = request.CreateSelfSigned(now.AddHours(-1), now.AddDays(1));
+
+        Assert.False(PinnedCertificate.Matches(impostor, pinned.PublicKey.ExportSubjectPublicKeyInfo()));
+    }
+
     private static X509Certificate2 CreateCertificate()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);

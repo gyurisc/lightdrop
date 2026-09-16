@@ -71,17 +71,44 @@ proven causation.
 Settings toggle is the only way back, and the app cannot explain that in-band. The mDNS library is
 a community fork of a project abandoned in 2019.
 
-## M2 — Secure pairing
+## M2 — Secure pairing 🔨 in progress
 
 **Goal:** peers explicitly trust each other; unknown peers are rejected.
 
-- Device key pair generated alongside identity
-- Explicit pairing handshake with a short human-verifiable code
-- Trusted peer store in `state.json`, with fingerprint or public-key pinning
-- Reject every unpaired peer
-- `lightdrop pair`, `lightdrop peers --trusted`
+**This is the one milestone that cannot be retrofitted.** Design agreed in
+`docs/superpowers/specs/2026-08-16-m2-secure-pairing-design.md`. Never invent cryptography.
 
-**This is the one milestone that cannot be retrofitted.** It needs its own design pass, a security review, and no shortcuts. Never invent cryptography.
+- [x] **Device key pair generated alongside identity** — `7eff527`. ECDSA P-256, private key in
+      `state.json`, certificate reissued every start because pairing pins the key, not the
+      certificate.
+- [x] **Discovery captures a peer's address** — `eec47f4`. Pairing has to dial something, and the
+      packet source is preferred over the claimed A record (`DECISIONS.md` #23).
+- [x] **Pairing code and the trusted-peer store** — `03811ab`. `PairingCode.Derive` produces six
+      digits from both public keys, sorted so both sides agree without a round trip.
+      `PairingService` holds pin-or-reject and refuses to re-pin.
+- [x] **Pinned TLS handshake** — `72d01db`. `PinnedCertificate.Matches` plus `PairingTls`
+      configuring both ends of a mutual-TLS connection. Verified by mutation five times: replacing
+      a pin check with `true` must fail exactly the corresponding rejection test.
+- [ ] **The pairing window itself** — an ephemeral LAN listener, a 60-second timeout, roles
+      assigned by comparing device ids, and the session state machine. **This is the next slice.**
+- [ ] **A deferred-validation TLS mode.** `PairingTls` requires the peer's pinned key up front, so
+      it describes the connection *after* pairing. During the window neither side has that key yet
+      — the handshake is its only carrier — so pairing needs a second mode that accepts any
+      certificate, captures its SubjectPublicKeyInfo, and lets the session decide once the humans
+      have compared digits. See the `<remarks>` on `PairingTls`.
+- [ ] `lightdrop pair`, `lightdrop unpair`, `lightdrop peers --trusted`
+- [ ] The pairing ceremony in the web UI (phase B of the companion UI)
+- [ ] Manual verification between two real machines, as with M1
+
+### Known traps for the next slice
+
+- **The origin-check middleware is global.** It is hard-wired to the loopback authority, so every
+  inbound pairing POST on a LAN listener gets a silent 403. Do **not** fix this by exempting the
+  port: `LightDropDaemon.Create` builds one `WebApplication`, so one route table, and exempting the
+  port would expose `/health`, `/api/peers` and the UI page to any LAN caller during the window.
+  The listener needs its routing scoped — endpoint metadata, or its own `WebApplication`.
+- **macOS negotiates TLS 1.2**, not 1.3. The suite asserts a 1.2 floor rather than forcing 1.3,
+  which would have broken the handshake on one of the two platforms this project targets.
 
 ## M3 — File transfer
 

@@ -20,4 +20,11 @@ namespace LightDrop.Core.Contracts;
 [JsonSerializable(typeof(PeerListResponse))]
 [JsonSerializable(typeof(LightDropConfig))]
 [JsonSerializable(typeof(LightDropState))]
+[JsonSerializable(typeof(StartPairingRequest))]
+[JsonSerializable(typeof(PairingStatus))]
+[JsonSerializable(typeof(PairingDecision))]
+[JsonSerializable(typeof(TrustedPeerListResponse))]
+[JsonSerializable(typeof(ApiError))]
+[JsonSerializable(typeof(PairHelloRequest))]
+[JsonSerializable(typeof(PairHelloResponse))]
 public partial class LightDropJsonContext : JsonSerializerContext;

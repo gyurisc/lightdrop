@@ -37,10 +37,31 @@ public static class PinnedCertificate
             return false;
         }
 
-        byte[] presentedSpki;
+        return TryExportPublicKeyInfo(presented, out var presentedSpki)
+            && CryptographicOperations.FixedTimeEquals(presentedSpki, pinnedPublicKeyInfo);
+    }
+
+    /// <summary>
+    /// The SubjectPublicKeyInfo a presented certificate carries, failing closed rather than
+    /// throwing.
+    /// </summary>
+    /// <remarks>
+    /// The one place a key is read out of a certificate that came off the wire -- for pin checks
+    /// here, and for capturing a peer's key during the pairing window, where there is no pin yet
+    /// to compare against.
+    /// </remarks>
+    public static bool TryExportPublicKeyInfo(X509Certificate2? presented, out byte[] publicKeyInfo)
+    {
+        if (presented is null)
+        {
+            publicKeyInfo = [];
+            return false;
+        }
+
         try
         {
-            presentedSpki = presented.PublicKey.ExportSubjectPublicKeyInfo();
+            publicKeyInfo = presented.PublicKey.ExportSubjectPublicKeyInfo();
+            return true;
         }
         catch (CryptographicException)
         {
@@ -55,10 +76,9 @@ public static class PinnedCertificate
             // fail certificate parsing itself, before any of this code runs, so the throwing input
             // this guards against cannot arrive through TLS. It stays as defence-in-depth against
             // that boundary being wrong, not as a branch this test suite can reach.
+            publicKeyInfo = [];
             return false;
         }
-
-        return CryptographicOperations.FixedTimeEquals(presentedSpki, pinnedPublicKeyInfo);
     }
 
     /// <summary>

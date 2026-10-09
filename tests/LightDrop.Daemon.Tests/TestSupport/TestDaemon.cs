@@ -5,6 +5,7 @@ using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Devices;
 using LightDrop.Core.Pairing;
+using LightDrop.Daemon.Peers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -56,6 +57,17 @@ internal sealed class TestDaemon : IAsyncDisposable
 
     public Uri PeerAddress => new($"https://127.0.0.1:{Endpoint.PeerPort}/");
 
+    /// <summary>Where this daemon saves received files: inside its temp directory, never the real one.</summary>
+    public string DownloadFolder => DownloadFolderIn(Directory);
+
+    /// <summary>The files in <see cref="DownloadFolder"/>, by name; empty if it does not exist yet.</summary>
+    public IReadOnlyList<string> ReceivedFiles =>
+        System.IO.Directory.Exists(DownloadFolder)
+            ? [.. System.IO.Directory.EnumerateFileSystemEntries(DownloadFolder).Select(Path.GetFileName).Order(StringComparer.Ordinal)!]
+            : [];
+
+    private static string DownloadFolderIn(TempDataDirectory directory) => Path.Combine(directory.FullPath, "Downloads");
+
     /// <param name="deviceId">Fixes the role this daemon plays: lower id listens.</param>
     /// <param name="trusted">Peers already pinned when the daemon starts.</param>
     public static Task<TestDaemon> StartAsync(
@@ -75,8 +87,11 @@ internal sealed class TestDaemon : IAsyncDisposable
     {
         var directory = new TempDataDirectory();
 
+        // The download folder is always inside the temp directory and deliberately not created:
+        // no test may ever write to the real ~/Downloads, and the daemon must create it itself.
         directory.WriteConfig(JsonSerializer.Serialize(
-            new LightDropConfig { DeviceName = name }, LightDropJsonContext.Default.LightDropConfig));
+            new LightDropConfig { DeviceName = name, DownloadFolder = DownloadFolderIn(directory) },
+            LightDropJsonContext.Default.LightDropConfig));
         directory.WriteState(JsonSerializer.Serialize(
             new LightDropState { DeviceId = deviceId, TrustedPeers = trusted }, LightDropJsonContext.Default.LightDropState));
 
@@ -103,6 +118,23 @@ internal sealed class TestDaemon : IAsyncDisposable
     /// <summary>Makes this daemon hear <paramref name="other"/> on its peer port.</summary>
     public void Discover(TestDaemon other) =>
         Transport.Announce(other.DeviceId, other.Name, port: other.Endpoint.PeerPort, address: "127.0.0.1");
+
+    /// <summary>
+    /// Pins <paramref name="other"/>'s key under its name, as a completed pairing would, and makes
+    /// sure the peer listener is up. For tests about what comes after pairing; the ceremony
+    /// itself is <c>PairingFlowTests</c>' subject.
+    /// </summary>
+    public async Task TrustAsync(TestDaemon other)
+    {
+        var key = await other.GetKeyAsync();
+        await App.Services.GetRequiredService<PairingService>().PinAsync(other.DeviceId, other.Name, key.PublicKeyInfo);
+        await App.Services.GetRequiredService<PeerListener>().EnsureStartedAsync(CancellationToken.None);
+    }
+
+    /// <summary><c>POST /api/send</c>, as <c>lightdrop send</c> calls it.</summary>
+    public Task<HttpResponseMessage> SendAsync(string path, string peer) =>
+        Api.PostAsJsonAsync(
+            "api/send", new SendRequest { Path = path, Peer = peer }, LightDropJsonContext.Default.SendRequest);
 
     public Task<HttpResponseMessage> StartPairingAsync(string peer) =>
         Api.PostAsJsonAsync(

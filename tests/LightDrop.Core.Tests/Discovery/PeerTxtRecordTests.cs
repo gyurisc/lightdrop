@@ -52,6 +52,16 @@ public sealed class PeerTxtRecordTests
     }
 
     [Fact]
+    public void AdvertisesCapabilitiesWhenThereAreSome()
+    {
+        var built = PeerTxtRecord.Build(new DeviceIdentity("device-1", "Laptop"), ["Ping", "SendFile"])
+            .Select(pair => $"{pair.Key}={pair.Value}");
+
+        Assert.True(PeerTxtRecord.TryParse(built, 5533, Address, out var announcement));
+        Assert.Equal(["Ping", "SendFile"], announcement!.Capabilities);
+    }
+
+    [Fact]
     public void ParsesCapabilities()
     {
         Assert.True(PeerTxtRecord.TryParse(

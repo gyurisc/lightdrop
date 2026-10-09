@@ -1,16 +1,19 @@
 using System.Net;
 using System.Net.Sockets;
 using LightDrop.Core;
+using LightDrop.Core.Commands;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Devices;
 using LightDrop.Core.Discovery;
+using LightDrop.Daemon.Commands;
 using LightDrop.Daemon.Discovery;
 using LightDrop.Daemon.Endpoints;
 using LightDrop.Daemon.Infrastructure;
 using LightDrop.Daemon.Pairing;
 using LightDrop.Daemon.Peers;
 using LightDrop.Daemon.Security;
+using LightDrop.Daemon.Transfers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -74,6 +77,7 @@ public static class LightDropDaemon
         app.MapHealthEndpoints();
         app.MapPeerEndpoints();
         app.MapPairingEndpoints();
+        app.MapSendEndpoints();
         return app;
     }
 
@@ -184,6 +188,16 @@ public static class LightDropDaemon
         services.AddSingleton<IStateStore, JsonStateStore>();
 
         services.AddLightDropCore();
+
+        // The commands paired peers may send. Registering a handler here is the whole of adding
+        // one: the peer listener dispatches to this set, and the capabilities /health and the TXT
+        // record advertise are projected from it rather than listed anywhere by hand.
+        services.AddSingleton<DownloadFolder>();
+        services.AddSingleton<ICommandHandler, SendFileHandler>();
+        services.AddSingleton(provider => new CommandCapabilities(
+            provider.GetServices<ICommandHandler>().Select(handler => handler.Name)));
+
+        services.AddSingleton<FileSender>();
 
         // Discovered peers live here and nowhere else — in memory, for this process only. The
         // registry has no route to IStateStore by design: a discovered peer is a stranger, and

@@ -38,6 +38,7 @@ services.AddSingleton<ICliCommand, HealthCommand>();
 services.AddSingleton<ICliCommand, PeersCommand>();
 services.AddSingleton<ICliCommand, PairCommand>();
 services.AddSingleton<ICliCommand, UnpairCommand>();
+services.AddSingleton<ICliCommand, SendCommand>();
 services.AddSingleton<ICliCommand, UiCommand>();
 
 await using var provider = services.BuildServiceProvider();
@@ -92,6 +93,13 @@ static void PrintUsage(IEnumerable<ICliCommand> commands)
         Console.WriteLine($"  {command.Name,-10}{command.Description}");
     }
 
+    Console.WriteLine();
+    Console.WriteLine("Getting started (run the daemon on both devices first):");
+    Console.WriteLine("  lightdrop peers                       list nearby devices");
+    Console.WriteLine("  lightdrop pair \"Mac Mini\"             pair once; run it on both devices");
+    Console.WriteLine("  lightdrop peers --trusted             list paired devices");
+    Console.WriteLine("  lightdrop send report.pdf \"Mac Mini\"  send a file to a paired device");
+    Console.WriteLine("  lightdrop unpair \"Mac Mini\"           forget a paired device on this machine");
     Console.WriteLine();
     Console.WriteLine("Environment:");
     Console.WriteLine($"  {DaemonEndpointOptions.HostEnvironmentVariable,-20}listen address (default {DaemonEndpointOptions.DefaultHost})");

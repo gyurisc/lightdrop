@@ -34,22 +34,33 @@ public static class PeerTxtRecord
     /// <summary>
     /// Builds the key/value pairs advertised for this device.
     /// </summary>
-    public static IReadOnlyList<KeyValuePair<string, string>> Build(DeviceIdentity identity)
+    /// <param name="capabilities">
+    /// The registered command names (<see cref="Commands.CommandCapabilities"/>). Informational:
+    /// what a peer will actually accept is decided on its own side, behind its pinned handshake.
+    /// </param>
+    public static IReadOnlyList<KeyValuePair<string, string>> Build(
+        DeviceIdentity identity,
+        IReadOnlyCollection<string>? capabilities = null)
     {
         ArgumentNullException.ThrowIfNull(identity);
 
-        return
+        List<KeyValuePair<string, string>> record =
         [
             new(TxtVersionKey, TxtVersion),
             new(DeviceIdKey, identity.Id),
             new(ProtocolVersionKey, LightDropVersion.Protocol.ToString(CultureInfo.InvariantCulture)),
             new(PlatformKey, DevicePlatform.Current),
             new(DeviceNameKey, identity.Name),
-
-            // `cap` is omitted entirely while empty: in DNS-SD an absent key is meaningfully
-            // different from a present-but-empty one, and there is no reason to spend bytes on
-            // nothing. It appears when the first command handler ships.
         ];
+
+        // `cap` is omitted entirely while empty: in DNS-SD an absent key is meaningfully
+        // different from a present-but-empty one, and there is no reason to spend bytes on nothing.
+        if (capabilities is { Count: > 0 })
+        {
+            record.Add(new(CapabilitiesKey, string.Join(',', capabilities)));
+        }
+
+        return record;
     }
 
     /// <summary>

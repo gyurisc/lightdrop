@@ -16,10 +16,9 @@ namespace LightDrop.Daemon.Peers;
 /// any stranger for the length of every window. Applied to a whole group so that a route added
 /// later inherits it rather than having to remember it.
 /// <para>
-/// Not yet applied in production: the peer listener maps only the pairing routes so far, and
-/// those cannot require a pin their caller does not have yet. The <c>/commands</c> group arrives
-/// with file transfer and goes behind this. It is tested now, against a test-only route, so it is
-/// proven load-bearing before anything depends on it.
+/// Applied to the <c>/commands</c> group (<see cref="Commands.CommandEndpoints"/>). Not to the
+/// pairing routes: their callers cannot have a pin yet, and each checks the session's joined key
+/// for itself instead.
 /// </para>
 /// <para>
 /// <c>trustedPeers</c> is read per request, like the handshake gate, so an unpair applies at once.

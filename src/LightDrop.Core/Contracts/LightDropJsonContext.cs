@@ -28,4 +28,8 @@ namespace LightDrop.Core.Contracts;
 [JsonSerializable(typeof(PairHelloRequest))]
 [JsonSerializable(typeof(PairHelloResponse))]
 [JsonSerializable(typeof(PairingNonce))]
+[JsonSerializable(typeof(SendRequest))]
+[JsonSerializable(typeof(SendResponse))]
+[JsonSerializable(typeof(SendFileMetadata))]
+[JsonSerializable(typeof(SendFileResult))]
 public partial class LightDropJsonContext : JsonSerializerContext;

@@ -1,4 +1,5 @@
 using Makaretu.Dns;
+using LightDrop.Core.Commands;
 using LightDrop.Core.Devices;
 using LightDrop.Core.Discovery;
 using Microsoft.Extensions.Logging;
@@ -14,7 +15,9 @@ namespace LightDrop.Daemon.Discovery;
 /// of the library's internals, which would only re-test the library. It is verified by hand on
 /// two machines; see the checklist in <c>docs/Roadmap.md</c>.
 /// </remarks>
-public sealed class MdnsPeerDiscoveryTransport(ILogger<MdnsPeerDiscoveryTransport> logger) : IPeerDiscoveryTransport
+public sealed class MdnsPeerDiscoveryTransport(
+    CommandCapabilities capabilities,
+    ILogger<MdnsPeerDiscoveryTransport> logger) : IPeerDiscoveryTransport
 {
     /// <summary>The DNS-SD service type. Nine characters, inside the 15-character limit.</summary>
     public const string ServiceName = "_lightdrop._tcp";
@@ -68,7 +71,7 @@ public sealed class MdnsPeerDiscoveryTransport(ILogger<MdnsPeerDiscoveryTranspor
             addresses: null,
             sharedProfile: false);
 
-        foreach (var (key, value) in PeerTxtRecord.Build(identity))
+        foreach (var (key, value) in PeerTxtRecord.Build(identity, capabilities.Names))
         {
             profile.AddProperty(key, value);
         }

@@ -1,3 +1,4 @@
+using LightDrop.Core.Commands;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Devices;
 using LightDrop.Core.Health;
@@ -9,8 +10,11 @@ public sealed class HealthServiceTests
 {
     private static HealthService CreateService(
         LightDropConfig? config = null,
-        LightDropState? state = null) =>
-        new(new DeviceIdentityProvider(new InMemoryStateStore(state), new InMemoryConfigStore(config)));
+        LightDropState? state = null,
+        params string[] commands) =>
+        new(
+            new DeviceIdentityProvider(new InMemoryStateStore(state), new InMemoryConfigStore(config)),
+            new CommandCapabilities(commands));
 
     [Fact]
     public async Task ReportsIdentityFromTheProvider()
@@ -51,14 +55,24 @@ public sealed class HealthServiceTests
     }
 
     [Fact]
-    public async Task AdvertisesNoCapabilitiesWhileNoCommandsAreImplemented()
+    public async Task AdvertisesNoCapabilitiesWhenNoCommandsAreRegistered()
     {
-        // The daemon accepts no commands yet and says so honestly. When handlers exist this
-        // must become a projection of the registered set, not a hand-maintained list.
         var service = CreateService();
 
         var health = await service.GetHealthAsync(CancellationToken.None);
 
         Assert.Empty(health.Capabilities);
+    }
+
+    [Fact]
+    public async Task AdvertisesExactlyTheRegisteredCommands()
+    {
+        // A projection of what is registered, never a hand-kept list: a list maintained separately
+        // drifts from what the daemon actually accepts the first time someone forgets it.
+        var service = CreateService(commands: ["SendFile", "Ping", "SendFile"]);
+
+        var health = await service.GetHealthAsync(CancellationToken.None);
+
+        Assert.Equal(["Ping", "SendFile"], health.Capabilities);
     }
 }

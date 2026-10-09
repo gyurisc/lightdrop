@@ -18,8 +18,12 @@ public sealed record LightDropConfig
     public string? DeviceName { get; init; }
 
     /// <summary>
-    /// Where received files land. Nothing reads this yet; the default is resolved by the
-    /// infrastructure layer when file transfer lands.
+    /// Where received files land. Defaults to <c>Downloads</c> in the user's home directory.
     /// </summary>
+    /// <remarks>
+    /// A leading <c>~</c> is the home directory, and a relative path is taken relative to it --
+    /// not to the daemon's working directory, which a user editing this file cannot know. Created
+    /// if missing. Re-read for every received file, so an edit applies without a restart.
+    /// </remarks>
     public string? DownloadFolder { get; init; }
 }

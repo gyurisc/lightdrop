@@ -19,11 +19,11 @@ namespace LightDrop.Daemon.Tests;
 /// The application-layer pin check that sits behind the handshake gate.
 /// </summary>
 /// <remarks>
-/// Tested on a test-only host because production does not apply it to anything yet -- the
-/// <c>/commands</c> group it guards arrives with file transfer. The host reproduces the situation
-/// it exists for: a TLS layer that admits any certificate, as the peer listener's does while a
-/// pairing window is open, built from the production <see cref="PairingTls.CreateServerOptions"/>
-/// through the same per-connection Kestrel callback the listener uses.
+/// The filter in isolation, on a test-only host whose TLS layer admits any certificate -- as the
+/// peer listener's does while a pairing window is open -- built from the production
+/// <see cref="PairingTls.CreateServerOptions"/> through the same per-connection Kestrel callback
+/// the listener uses. That it is actually applied to the listener's <c>/commands</c> group is
+/// <c>FileTransferTests</c>' job.
 /// </remarks>
 public sealed class PinnedPeerFilterTests(PairingKeys keys) : IClassFixture<PairingKeys>
 {

@@ -5,6 +5,7 @@ using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Devices;
 using LightDrop.Core.Pairing;
+using LightDrop.Daemon.Commands;
 using LightDrop.Daemon.Pairing;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -38,7 +39,7 @@ namespace LightDrop.Daemon.Peers;
 /// connection with nothing to invalidate. While a window is open any certificate gets through,
 /// because the handshake is the only way the new peer's key can arrive -- which is why every
 /// route behind this gate also checks for itself: the pairing routes against the session's
-/// joined key, everything else through <see cref="PinnedPeerFilter"/>.
+/// joined key, the <c>/commands</c> group through <see cref="PinnedPeerFilter"/>.
 /// </para>
 /// </remarks>
 internal sealed class PeerListener(
@@ -46,11 +47,13 @@ internal sealed class PeerListener(
     DeviceKeyProvider keys,
     PairingService pairing,
     PairingCoordinator coordinator,
+    IEnumerable<ICommandHandler> commandHandlers,
     ILogger<PeerListener> logger) : IHostedService, IAsyncDisposable
 {
     /// <summary>
     /// The largest request body a peer may send. Every pairing body is a few dozen bytes, and the
-    /// caller may be a stranger. A route that needs more must raise it for itself.
+    /// caller may be a stranger. A route that needs more must raise it for itself, per request,
+    /// as <c>SendFile</c> does to exactly its declared length.
     /// </summary>
     internal const long MaxRequestBodyBytes = 4096;
 
@@ -186,11 +189,19 @@ internal sealed class PeerListener(
         builder.Services.AddSingleton(coordinator);
         builder.Services.AddSingleton(pairing);
 
+        // The handler instances the loopback app's container built, so the set dispatched to here
+        // is the set /health advertises there.
+        foreach (var handler in commandHandlers)
+        {
+            builder.Services.AddSingleton(handler);
+        }
+
         builder.Services.ConfigureHttpJsonOptions(json =>
             json.SerializerOptions.TypeInfoResolverChain.Insert(0, LightDropJsonContext.Default));
 
         var app = builder.Build();
         app.MapPairingPeerEndpoints();
+        app.MapCommandEndpoints();
         return app;
     }
 

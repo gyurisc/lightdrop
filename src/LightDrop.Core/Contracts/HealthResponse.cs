@@ -32,7 +32,7 @@ public sealed record HealthResponse
     /// <summary>
     /// The commands this device accepts. Lets the protocol grow additively: a peer learns what
     /// clipboard, image or notification support is available without a protocol version bump.
-    /// Empty while the daemon implements no commands.
+    /// Derived from the registered command handlers; see <see cref="Commands.CommandCapabilities"/>.
     /// </summary>
     public required IReadOnlyList<string> Capabilities { get; init; }
 }

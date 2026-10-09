@@ -11,7 +11,7 @@ namespace LightDrop.Daemon.Peers;
 internal static class PairingPeerEndpoints
 {
     /// <summary>
-    /// Maps the three pairing routes on the peer listener -- the only routes it has in this slice.
+    /// Maps the three pairing routes on the peer listener.
     /// </summary>
     /// <remarks>
     /// None is behind <see cref="PinnedPeerFilter"/>: their callers are by definition not pinned

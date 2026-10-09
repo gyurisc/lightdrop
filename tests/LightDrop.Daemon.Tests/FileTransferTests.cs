@@ -6,6 +6,7 @@ using LightDrop.Core.Contracts;
 using LightDrop.Core.Transfers;
 using LightDrop.Daemon.Peers;
 using LightDrop.Daemon.Tests.TestSupport;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LightDrop.Daemon.Tests;
 
@@ -186,13 +187,20 @@ public sealed class FileTransferTests(PairingKeys keys) : IClassFixture<PairingK
     }
 
     [Fact]
-    public async Task ReportsCapabilitiesDerivedFromTheRegisteredHandlers()
+    public async Task ReportsExactlyTheCommandsItsContainerCanDispatch()
     {
+        // Exactly, not "contains": a capability with no handler behind it advertises a command
+        // that would 404. That the list is projected from the handlers, rather than happening to
+        // match them, is CommandServicesTests' job.
         await using var daemon = await TestDaemon.StartAsync(SenderId, "Desk PC");
 
         var health = await daemon.Api.GetFromJsonAsync("health", LightDropJsonContext.Default.HealthResponse);
 
-        Assert.Contains("SendFile", health!.Capabilities);
+        var handlers = daemon.App.Services.GetServices<Commands.ICommandHandler>()
+            .Select(handler => handler.Name)
+            .Order(StringComparer.Ordinal);
+        Assert.Equal(handlers, health!.Capabilities);
+        Assert.Contains("SendFile", health.Capabilities);
     }
 
     // ---- What the sender refuses before any byte leaves. ----
@@ -309,6 +317,153 @@ public sealed class FileTransferTests(PairingKeys keys) : IClassFixture<PairingK
             Assert.Empty(impostor.ReceivedFiles);
             Assert.Empty(receiver.ReceivedFiles);
         }
+    }
+
+    // ---- What the sender makes of a paired receiver's answers. ----
+
+    [Theory]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\u001b]52;c;aGk=\u0007\u001b[2J: v\r\n\r\n")]
+    [InlineData("HTTP/1.1 2\u001b]52;c;aGk=\u0007 OK\r\nContent-Length: 0\r\n\r\n")]
+    public async Task AMalformedAnswerCannotWriteToTheSendersTerminal(string raw)
+    {
+        // The HTTP stack quotes the bytes it chokes on in its exception message, escapes and all,
+        // and that message is part of the error `lightdrop send` prints.
+        await using var receiver = ScriptedReceiver.Start(keys.Bob, exchange => exchange.WriteAsync(raw));
+        await using var sender = await StartPinnedToBobAsync(receiver);
+        var path = WriteFile(sender, "notes.txt", [1, 2, 3]);
+
+        using var response = await sender.SendAsync(path, "Mac Mini");
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync(LightDropJsonContext.Default.ApiError))!;
+        Assert.DoesNotContain(error.Error, char.IsControl);
+    }
+
+    [Fact]
+    public async Task TheNameAReceiverSaysItSavedAsCannotWriteToTheSendersTerminal()
+    {
+        await using var receiver = ScriptedReceiver.Start(
+            keys.Bob, exchange => exchange.WriteAsync(ScriptedReceiver.Json(200, """{"savedAs":"\u001b]52;c;aGk=\u0007\u001b[2Jnotes.txt"}""")));
+        await using var sender = await StartPinnedToBobAsync(receiver);
+        var path = WriteFile(sender, "notes.txt", [1, 2, 3]);
+
+        using var response = await sender.SendAsync(path, "Mac Mini");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var sent = (await response.Content.ReadFromJsonAsync(LightDropJsonContext.Default.SendResponse))!;
+        Assert.Equal("]52;c;aGk=[2Jnotes.txt", sent.SavedAs);
+    }
+
+    [Fact]
+    public async Task AReceiversRefusalCannotWriteToTheSendersTerminal()
+    {
+        await using var receiver = ScriptedReceiver.Start(
+            keys.Bob, exchange => exchange.WriteAsync(ScriptedReceiver.Json(400, """{"error":"no\u001b]52;c;aGk=\u0007\r\nthanks"}""")));
+        await using var sender = await StartPinnedToBobAsync(receiver);
+        var path = WriteFile(sender, "notes.txt", [1, 2, 3]);
+
+        using var response = await sender.SendAsync(path, "Mac Mini");
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync(LightDropJsonContext.Default.ApiError))!;
+
+        // The refusal did arrive -- this is its text, cleaned -- rather than being dropped.
+        Assert.Contains("]52;c;aGk=", error.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain(error.Error, char.IsControl);
+    }
+
+    [Fact]
+    public async Task AFileThatGrowsWhileBeingSentArrivesAsTheLengthItHadWhenTheSendBegan()
+    {
+        // What was declared is what is sent. Otherwise the receiver saves the declared length,
+        // complete as far as it can tell, while the sender's stack fails on the extra bytes and
+        // `lightdrop send` reports a failure for a file that did arrive. Windows refuses the
+        // append outright (the sender holds the file open without write sharing); on macOS and
+        // Linux nothing stops it, which is the case that matters.
+        var original = RandomBytes(4096, seed: 4);
+        var headRead = new TaskCompletionSource();
+        var grown = new TaskCompletionSource();
+        var received = new TaskCompletionSource<byte[]>();
+
+        await using var receiver = ScriptedReceiver.Start(keys.Bob, async exchange =>
+        {
+            // The sender asked for 100-continue, so no body byte has been read from the file yet.
+            headRead.SetResult();
+            await grown.Task;
+            await exchange.WriteAsync("HTTP/1.1 100 Continue\r\n\r\n");
+            received.SetResult(await exchange.ReadBodyAsync());
+            await exchange.WriteAsync(ScriptedReceiver.Json(200, """{"savedAs":"grow.log"}"""));
+        });
+        await using var sender = await StartPinnedToBobAsync(receiver);
+        var path = WriteFile(sender, "grow.log", original);
+
+        var send = sender.SendAsync(path, "Mac Mini");
+        await headRead.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        try
+        {
+            await File.AppendAllTextAsync(path, "one more line\n");
+        }
+        catch (IOException) when (OperatingSystem.IsWindows())
+        {
+            // The sharing mode said no: the file cannot grow, so there is nothing to show.
+        }
+
+        grown.SetResult();
+        using var response = await send;
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(original, await received.Task);
+    }
+
+    [Fact]
+    public async Task APeerThatNeverAnswersTheHandshakeFailsTheSendInsteadOfHangingIt()
+    {
+        // A receiver gone to sleep, or behind a firewall dropping the port, is still listed for
+        // minutes after it went quiet. The transfer has no timeout -- it may take an hour -- so
+        // the dial must have its own. This listener's backlog accepts the TCP connection and
+        // nothing ever answers the TLS handshake.
+        var silent = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        silent.Start();
+        try
+        {
+            await using var sender = await TestDaemon.StartAsync(SenderId, "Desk PC", new TrustedPeer
+            {
+                DeviceId = ReceiverId,
+                DeviceName = "Mac Mini",
+                PublicKey = Convert.ToBase64String(keys.Bob.PublicKeyInfo),
+                PairedAt = DateTimeOffset.UnixEpoch,
+            });
+            sender.Transport.Announce(ReceiverId, "Mac Mini", port: ((IPEndPoint)silent.LocalEndpoint).Port, address: "127.0.0.1");
+            var path = WriteFile(sender, "notes.txt", [1, 2, 3]);
+
+            // Inside TestDaemon.Api's own 30-second timeout, which is what fails this test if the
+            // daemon waits for ever.
+            using var response = await sender.SendAsync(path, "Mac Mini");
+
+            Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        }
+        finally
+        {
+            silent.Stop();
+        }
+    }
+
+    /// <summary>
+    /// A sender that pinned <see cref="PairingKeys.Bob"/> as "Mac Mini" and hears it at
+    /// <paramref name="receiver"/>.
+    /// </summary>
+    private async Task<TestDaemon> StartPinnedToBobAsync(ScriptedReceiver receiver)
+    {
+        var sender = await TestDaemon.StartAsync(SenderId, "Desk PC", new TrustedPeer
+        {
+            DeviceId = ReceiverId,
+            DeviceName = "Mac Mini",
+            PublicKey = Convert.ToBase64String(keys.Bob.PublicKeyInfo),
+            PairedAt = DateTimeOffset.UnixEpoch,
+        });
+
+        sender.Transport.Announce(ReceiverId, "Mac Mini", port: receiver.Port, address: "127.0.0.1");
+        return sender;
     }
 
     // ---- What the receiver enforces, called directly as a (possibly hostile) paired peer. ----

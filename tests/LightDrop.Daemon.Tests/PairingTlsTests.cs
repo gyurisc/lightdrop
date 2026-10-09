@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
@@ -127,5 +128,40 @@ public sealed class PairingTlsTests(PairingKeys keys) : IClassFixture<PairingKey
         Assert.True(
             protocol is SslProtocols.Tls12 or SslProtocols.Tls13,
             $"Negotiated {protocol}, which is below the TLS 1.2 floor.");
+    }
+
+    [Theory]
+    [InlineData("pinned")]
+    [InlineData("pinned base64")]
+    [InlineData("capturing")]
+    public async Task DialsAPeerDirectlyEvenWhenAProxyIsConfigured(string kind)
+    {
+        // A system proxy, a PAC file or HTTPS_PROXY is what an HttpClient obeys by default. For a
+        // peer on the LAN that means the dial goes out as CONNECT to a third party, which usually
+        // cannot reach the home network at all and, when it can, relays a transfer that is meant
+        // to stay local. Here the proxy refuses every connection, so a handler that consulted it
+        // fails; one that dials the peer directly does not.
+        await using var listener = await PinnedListener.StartAsync(keys.Alice, keys.Bob.PublicKeyInfo);
+
+        using var handler = kind switch
+        {
+            "pinned" => PairingTls.CreateHandler(keys.Bob, keys.Alice.PublicKeyInfo),
+            "pinned base64" => PairingTls.CreateHandler(keys.Bob, Convert.ToBase64String(keys.Alice.PublicKeyInfo)),
+            _ => PairingTls.CreateCapturingHandler(keys.Bob, new PeerKeyCapture()),
+        };
+        handler.Proxy = new EveryRequestProxy(new Uri($"http://127.0.0.1:{FreeTcpPort.Get()}/"));
+        using var client = new HttpClient(handler) { BaseAddress = listener.Address };
+
+        Assert.Equal("lightdrop", await client.GetStringAsync("pair/hello", CancellationToken.None));
+    }
+
+    /// <summary>A proxy that claims every request, loopback included -- where a stock one would not.</summary>
+    private sealed class EveryRequestProxy(Uri address) : IWebProxy
+    {
+        public ICredentials? Credentials { get; set; }
+
+        public Uri GetProxy(Uri destination) => address;
+
+        public bool IsBypassed(Uri host) => false;
     }
 }

@@ -36,6 +36,12 @@ namespace LightDrop.Daemon.Pairing;
 internal static class PairingTls
 {
     /// <summary>
+    /// How long a dial to a peer may take, TCP connect and TLS handshake together. A device on
+    /// the same network answers in milliseconds; this is for one that never will.
+    /// </summary>
+    internal static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
     /// Server-side TLS options for one inbound connection, presenting this device's certificate and
     /// requiring the caller's, accepted only if <paramref name="accepts"/> says so.
     /// </summary>
@@ -88,16 +94,13 @@ internal static class PairingTls
         ArgumentNullException.ThrowIfNull(local);
         ArgumentNullException.ThrowIfNull(capture);
 
-        return new SocketsHttpHandler
+        return CreatePeerHandler(new SslClientAuthenticationOptions
         {
-            SslOptions = new SslClientAuthenticationOptions
-            {
-                ClientCertificates = [local.Certificate],
-                TargetHost = "lightdrop",
-                RemoteCertificateValidationCallback = (_, certificate, _, _) =>
-                    certificate is X509Certificate2 presented && capture.CaptureOrMatch(presented),
-            },
-        };
+            ClientCertificates = [local.Certificate],
+            TargetHost = "lightdrop",
+            RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+                certificate is X509Certificate2 presented && capture.CaptureOrMatch(presented),
+        });
     }
 
     /// <summary>
@@ -169,21 +172,18 @@ internal static class PairingTls
         // reference the caller kept.
         var pinned = (byte[])expectedPeerPublicKeyInfo.Clone();
 
-        return new SocketsHttpHandler
+        return CreatePeerHandler(new SslClientAuthenticationOptions
         {
-            SslOptions = new SslClientAuthenticationOptions
-            {
-                ClientCertificates = [local.Certificate],
+            ClientCertificates = [local.Certificate],
 
-                // The name in the certificate is decoration -- nothing validates it -- but the
-                // handshake still wants a target name to send.
-                TargetHost = "lightdrop",
+            // The name in the certificate is decoration -- nothing validates it -- but the
+            // handshake still wants a target name to send.
+            TargetHost = "lightdrop",
 
-                RemoteCertificateValidationCallback = (_, certificate, _, _) =>
-                    certificate is X509Certificate2 presented
-                    && PinnedCertificate.Matches(presented, pinned),
-            },
-        };
+            RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+                certificate is X509Certificate2 presented
+                && PinnedCertificate.Matches(presented, pinned),
+        });
     }
 
     /// <summary>
@@ -199,16 +199,41 @@ internal static class PairingTls
     {
         ArgumentNullException.ThrowIfNull(local);
 
-        return new SocketsHttpHandler
+        return CreatePeerHandler(new SslClientAuthenticationOptions
         {
-            SslOptions = new SslClientAuthenticationOptions
-            {
-                ClientCertificates = [local.Certificate],
-                TargetHost = "lightdrop",
-                RemoteCertificateValidationCallback = (_, certificate, _, _) =>
-                    certificate is X509Certificate2 presented
-                    && PinnedCertificate.Matches(presented, expectedPeerPublicKeyInfoBase64),
-            },
-        };
+            ClientCertificates = [local.Certificate],
+            TargetHost = "lightdrop",
+            RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+                certificate is X509Certificate2 presented
+                && PinnedCertificate.Matches(presented, expectedPeerPublicKeyInfoBase64),
+        });
     }
+
+    /// <summary>
+    /// The one place a handler for dialing a peer is built, so every dial gets the same two
+    /// settings that are not about trust but would undo "local network only" if missed.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Never through a proxy.</strong> A <see cref="SocketsHttpHandler"/> obeys the system
+    /// proxy, a PAC file and <c>HTTPS_PROXY</c> by default, and Windows' "bypass for local
+    /// addresses" covers only dotless host names, not <c>192.168.x.y</c>. A peer dialed through one
+    /// becomes a <c>CONNECT</c> to a third party, which usually cannot reach the home network --
+    /// the send fails, blaming the peer -- and when it can, relays a transfer that must stay on
+    /// the LAN. The pin would still hold end to end; the peer's address and the transfer's size
+    /// and timing would not stay local.
+    /// <para>
+    /// <strong>A bounded dial, an unbounded transfer.</strong> <see cref="ConnectTimeout"/> covers
+    /// the TCP connect and the TLS handshake only. A device that slept or left the network stays
+    /// in the discovery registry for minutes, and a firewall dropping the port answers nothing;
+    /// without it a send would wait out the OS connect timeout, 75 seconds on macOS -- or for ever
+    /// against something that accepts the connection and never speaks TLS. The transfer after it
+    /// keeps no timeout but the caller's cancellation, as a multi-gigabyte file needs.
+    /// </para>
+    /// </remarks>
+    private static SocketsHttpHandler CreatePeerHandler(SslClientAuthenticationOptions ssl) => new()
+    {
+        SslOptions = ssl,
+        UseProxy = false,
+        ConnectTimeout = ConnectTimeout,
+    };
 }

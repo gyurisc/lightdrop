@@ -152,7 +152,9 @@ internal sealed class FileSender(
                 MaxResponseContentBufferSize = MaxResponseBytes,
             };
 
-            using var content = new StreamContent(file);
+            // Cut at the length declared below: a file another process is still appending to must
+            // not send more than it said it would (see LengthLimitedStream).
+            using var content = new StreamContent(new LengthLimitedStream(file, length));
 
             // Explicit, so the request carries Content-Length and is never chunked: the receiver
             // refuses a body whose length it cannot check up front.
@@ -202,9 +204,16 @@ internal sealed class FileSender(
                 // TLS failures land here too, from either side: this end refusing a key that is not
                 // the pinned one, or the far end refusing ours because it has unpaired this device.
                 // The two cannot be told apart from here, so the message names both.
+                //
+                // The exception's own words are the receiver's words too: the HTTP stack quotes
+                // the bytes of a malformed status line or header name in its message, escape
+                // sequences included. Sanitized like everything else the receiver says, before
+                // it reaches the log or the terminal.
+                var detail = UntrustedText.Sanitize(Innermost(ex).Message, MaxPeerTextBytes);
                 var reason =
-                    $"Could not send to {peerName} at {discovered.Address}:{discovered.Port} ({Innermost(ex).Message}). " +
-                    $"It may be offline, or one of the two devices may have unpaired the other.";
+                    $"Could not send to {peerName} at {discovered.Address}:{discovered.Port} ({detail}). " +
+                    $"It may be offline or asleep, a firewall may be blocking that port, " +
+                    $"or one of the two devices may have unpaired the other.";
                 TransferLog.SendFailed(logger, path, peerName, peerId, reason, ex);
                 return new SendResult(SendOutcome.Failed, Error: reason);
             }

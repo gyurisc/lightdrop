@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
 using LightDrop.Core;
-using LightDrop.Core.Commands;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Devices;
@@ -189,13 +188,8 @@ public static class LightDropDaemon
 
         services.AddLightDropCore();
 
-        // The commands paired peers may send. Registering a handler here is the whole of adding
-        // one: the peer listener dispatches to this set, and the capabilities /health and the TXT
-        // record advertise are projected from it rather than listed anywhere by hand.
-        services.AddSingleton<DownloadFolder>();
-        services.AddSingleton<ICommandHandler, SendFileHandler>();
-        services.AddSingleton(provider => new CommandCapabilities(
-            provider.GetServices<ICommandHandler>().Select(handler => handler.Name)));
+        // The commands paired peers may send, and the capabilities projected from them.
+        services.AddCommandHandlers();
 
         services.AddSingleton<FileSender>();
 

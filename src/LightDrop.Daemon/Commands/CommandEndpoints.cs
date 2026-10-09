@@ -46,11 +46,24 @@ internal static class CommandEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> DispatchAsync(
+    /// <summary>Hands a request to the handler registered under <paramref name="name"/>.</summary>
+    /// <remarks>
+    /// Internal rather than private only so a test can call it without the filter in front.
+    /// </remarks>
+    internal static async Task<IResult> DispatchAsync(
         string name,
         HttpContext context,
         [FromServices] IEnumerable<ICommandHandler> handlers)
     {
+        // RequirePinnedPeer leaves the matched peer here and refuses any request it cannot match.
+        // Checked again rather than cast on trust: if the filter is ever lost from the group --
+        // a refactor, this dispatcher mapped somewhere else -- the request is refused here, before
+        // a handler writes a stranger's file to disk, instead of crashing after it has.
+        if (context.Items[PinnedPeerFilter.ItemsKey] is not TrustedPeer peer)
+        {
+            return TypedResults.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         // Ordinal: a command name is an identifier on the wire, not something a human typed.
         var handler = handlers.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
         if (handler is null)
@@ -62,9 +75,6 @@ internal static class CommandEndpoints
         {
             return TypedResults.BadRequest(new ApiError { Error = $"The {MetadataHeader} header is not valid base64url." });
         }
-
-        // Set by RequirePinnedPeer, which has already refused any request it could not set it for.
-        var peer = (TrustedPeer)context.Items[PinnedPeerFilter.ItemsKey]!;
 
         return await handler.HandleAsync(new CommandRequest(peer, metadata, context)).ConfigureAwait(false);
     }

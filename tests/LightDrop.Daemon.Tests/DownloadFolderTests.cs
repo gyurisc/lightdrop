@@ -105,6 +105,27 @@ public sealed class DownloadFolderTests
         Assert.Equal(20, new FileInfo(Path.Combine(folder, "exact.bin")).Length);
     }
 
+    [Theory]
+    [InlineData("../escape.txt")]
+    [InlineData("sub/../../escape.txt")]
+    public async Task ANameThatLeavesTheFolderIsRefusedEvenIfItGotPastSanitizing(string fileName)
+    {
+        // The second line of defence, called the way SendFileHandler calls it: if
+        // ReceivedFileName.Sanitize ever let a separator or ".." through, the save must still not
+        // land outside the folder -- nor leave its temp file behind on the way out.
+        using var directory = new TempDataDirectory();
+        var downloads = CreateDownloadFolder(directory, out var folder);
+        var before = Directory.EnumerateFileSystemEntries(directory.FullPath, "*", SearchOption.AllDirectories).ToList();
+
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => downloads.SaveAsync(fileName, new MemoryStream(new byte[5]), length: 5, CancellationToken.None));
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
+        Assert.Equal(
+            before.Append(folder).Order(StringComparer.Ordinal),
+            Directory.EnumerateFileSystemEntries(directory.FullPath, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal));
+    }
+
     private static DownloadFolder CreateDownloadFolder(TempDataDirectory directory, out string folder)
     {
         folder = Path.Combine(directory.FullPath, "Downloads");

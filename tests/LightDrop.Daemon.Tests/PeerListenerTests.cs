@@ -126,7 +126,10 @@ public sealed class PeerListenerTests(PairingKeys keys) : IClassFixture<PairingK
     [InlineData("GET", "api/trusted")]
     [InlineData("GET", "api/pairing")]
     [InlineData("POST", "api/pairing")]
+    [InlineData("POST", "api/pairing/confirm")]
+    [InlineData("DELETE", "api/pairing")]
     [InlineData("DELETE", "api/trusted/" + BobId)]
+    [InlineData("POST", "api/send")]
     public async Task ServesNoneOfTheLoopbackRoutes(string method, string path)
     {
         // Even to a pinned peer. The loopback app's routes are not in the peer app's table at all;

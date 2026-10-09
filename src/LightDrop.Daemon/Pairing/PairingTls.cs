@@ -23,17 +23,83 @@ namespace LightDrop.Daemon.Pairing;
 /// project targets, which would have been a worse trade.
 /// </para>
 /// <para>
-/// <strong>This is not the pairing handshake.</strong> Both methods here require the peer's public
-/// key up front, which is exactly what neither side has during the pairing window itself — the key
-/// is never broadcast in mDNS, so the TLS handshake is the only way it could ever reach the other
-/// side, and by then it is too late to have been supplied as a parameter. Pairing proper needs a
-/// second mode that deferred-validates: accept whatever certificate is presented, capture its
-/// SubjectPublicKeyInfo, and let the pairing session judge it after the humans compare six digits.
-/// That mode does not exist yet — do not assume this class already covers it.
+/// <strong>Two modes.</strong> <see cref="ConfigureListener(HttpsConnectionAdapterOptions, DeviceKeyPair, byte[])"/>
+/// and <see cref="CreateHandler(DeviceKeyPair, byte[])"/> require the peer's key up front: they
+/// describe a connection <em>after</em> pairing. During the pairing window neither side has that
+/// key — it is never broadcast in mDNS, so the TLS handshake is the only way it can arrive — so
+/// <see cref="CreateServerOptions"/> and <see cref="CreateCapturingHandler"/> defer the decision:
+/// the server side asks a predicate the caller supplies, and the dialing side accepts whatever key
+/// answers first, captures it, and refuses any different key for the rest of that handler's life.
+/// The pairing session judges the captured key after the humans compare six digits.
 /// </para>
 /// </remarks>
 internal static class PairingTls
 {
+    /// <summary>
+    /// Server-side TLS options for one inbound connection, presenting this device's certificate and
+    /// requiring the caller's, accepted only if <paramref name="accepts"/> says so.
+    /// </summary>
+    /// <remarks>
+    /// Built per connection (Kestrel's <c>TlsHandshakeCallbackOptions</c>) rather than once per
+    /// listener, so the predicate can close over the trusted peers as they are <em>now</em>: an
+    /// unpair takes effect for the next connection with no restart and no cache to invalidate.
+    /// <para>
+    /// The predicate is the whole trust decision for the peer listener. It never sees a null:
+    /// a caller that presents no certificate is refused here first.
+    /// </para>
+    /// </remarks>
+    public static SslServerAuthenticationOptions CreateServerOptions(
+        DeviceKeyPair local,
+        Func<X509Certificate2, bool> accepts)
+    {
+        ArgumentNullException.ThrowIfNull(local);
+        ArgumentNullException.ThrowIfNull(accepts);
+
+        return new SslServerAuthenticationOptions
+        {
+            ServerCertificate = local.Certificate,
+
+            // The callback-path equivalent of ClientCertificateMode.RequireCertificate. Without
+            // it the client is never asked for a certificate, and a caller with none would be
+            // judged on nothing.
+            ClientCertificateRequired = true,
+
+            // Replaces the platform's chain verdict outright, as in ConfigureListener: a
+            // self-signed peer certificate never chains, so that verdict means nothing here.
+            RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+                certificate is X509Certificate2 presented && accepts(presented),
+        };
+    }
+
+    /// <summary>
+    /// Creates a handler for the pairing window's <c>hello</c>: it presents this device's
+    /// certificate, accepts the first server key it meets, and records it in
+    /// <paramref name="capture"/>.
+    /// </summary>
+    /// <remarks>
+    /// "First key wins" rather than "any key": should this handler ever open a second connection,
+    /// it refuses a key different from the one it already captured, so a response this handler
+    /// returns provably came from the captured key. Everything after <c>hello</c> must then go
+    /// through <see cref="CreateHandler(DeviceKeyPair, byte[])"/> pinned to that key — this handler
+    /// is for discovering a key, never for trusting one.
+    /// </remarks>
+    public static SocketsHttpHandler CreateCapturingHandler(DeviceKeyPair local, PeerKeyCapture capture)
+    {
+        ArgumentNullException.ThrowIfNull(local);
+        ArgumentNullException.ThrowIfNull(capture);
+
+        return new SocketsHttpHandler
+        {
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                ClientCertificates = [local.Certificate],
+                TargetHost = "lightdrop",
+                RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+                    certificate is X509Certificate2 presented && capture.CaptureOrMatch(presented),
+            },
+        };
+    }
+
     /// <summary>
     /// Configures a listener to present this device's certificate and to require, and pin, the
     /// caller's.

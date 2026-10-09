@@ -3,6 +3,7 @@ using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Daemon.Tests.TestSupport;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LightDrop.Daemon.Tests;
 
@@ -101,10 +102,11 @@ public sealed class PeerEndpointTests
     }
 
     [Fact]
-    public async Task StartsDiscoveryWithThisDevicesIdentityAndPort()
+    public async Task StartsDiscoveryWithThisDevicesIdentityAndPeerPort()
     {
-        // The advertised port is the daemon's own. It is not reachable across the network and is
-        // not an authorization boundary — it is only what DNS-SD requires in an SRV record.
+        // The advertised port is the peer listener's: the SRV record says where this device is
+        // reachable. Never the loopback API's, which nothing on the network can reach. Still not
+        // an authorization boundary -- the pinned TLS handshake is.
         using var directory = new TempDataDirectory();
         var (app, client, transport) = await StartDaemonAsync(directory);
 
@@ -115,9 +117,12 @@ public sealed class PeerEndpointTests
                 var health = await client.GetFromJsonAsync(
                     "health", LightDropJsonContext.Default.HealthResponse, CancellationToken.None);
 
+                var endpoint = app.Services.GetRequiredService<DaemonEndpointOptions>();
+
                 Assert.NotNull(transport.StartedWith);
                 Assert.Equal(health!.DeviceId, transport.StartedWith!.Id);
-                Assert.Equal(client.BaseAddress!.Port, transport.StartedOnPort);
+                Assert.Equal(endpoint.PeerPort, transport.StartedOnPort);
+                Assert.NotEqual(client.BaseAddress!.Port, transport.StartedOnPort);
             }
 
             await app.StopAsync(CancellationToken.None);

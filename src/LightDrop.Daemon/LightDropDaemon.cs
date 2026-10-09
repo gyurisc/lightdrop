@@ -8,6 +8,8 @@ using LightDrop.Core.Discovery;
 using LightDrop.Daemon.Discovery;
 using LightDrop.Daemon.Endpoints;
 using LightDrop.Daemon.Infrastructure;
+using LightDrop.Daemon.Pairing;
+using LightDrop.Daemon.Peers;
 using LightDrop.Daemon.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -59,6 +61,7 @@ public static class LightDropDaemon
         app.MapUiEndpoints();
         app.MapHealthEndpoints();
         app.MapPeerEndpoints();
+        app.MapPairingEndpoints();
         return app;
     }
 
@@ -114,7 +117,11 @@ public static class LightDropDaemon
         return false;
     }
 
-    private static void ConfigureLogging(WebApplicationBuilder builder)
+    /// <remarks>
+    /// Shared with the peer listener's own <see cref="WebApplication"/>, so both write the same
+    /// structured lines to the same console.
+    /// </remarks>
+    internal static void ConfigureLogging(WebApplicationBuilder builder)
     {
         builder.Logging.ClearProviders();
 
@@ -192,6 +199,17 @@ public static class LightDropDaemon
 
         services.AddHostedService<PeerDiscoveryService>();
         services.AddHostedService<DaemonLifetimeService>();
+
+        // Pairing crosses from discovery (the registry, for the dial address and sanitized name)
+        // into trust (PairingService, for the pin) -- deliberately here, in one class, rather than
+        // through any path from the registry itself.
+        services.AddSingleton<PairingCoordinator>();
+
+        // A singleton the pairing endpoint can start on demand, and a hosted service so it starts
+        // with the daemon when a peer is already pinned and stops with it. Registered last so it
+        // stops first, ahead of the services its connections lean on.
+        services.AddSingleton<PeerListener>();
+        services.AddHostedService(provider => provider.GetRequiredService<PeerListener>());
 
         services.ConfigureHttpJsonOptions(json =>
             json.SerializerOptions.TypeInfoResolverChain.Insert(0, LightDropJsonContext.Default));

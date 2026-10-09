@@ -24,9 +24,9 @@ internal sealed class DaemonLifetimeService(
     {
         var identity = await identityProvider.GetAsync(cancellationToken).ConfigureAwait(false);
 
-        // Created on first run and reused thereafter. Resolved even though nothing presents it
-        // yet: it is what pairing will pin, so a device that cannot produce one is broken now
-        // rather than at the moment someone tries to pair.
+        // Created on first run and reused thereafter. Resolved here even though the peer listener
+        // may not start until someone pairs: it is what pairing pins, so a device that cannot
+        // produce one is broken now rather than at the moment someone tries to pair.
         _ = await keyProvider.GetAsync(cancellationToken).ConfigureAwait(false);
 
         DaemonLog.Started(

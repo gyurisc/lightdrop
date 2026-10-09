@@ -23,9 +23,9 @@ public sealed record DiscoveredPeer
     public required IReadOnlyList<string> Capabilities { get; init; }
 
     /// <summary>
-    /// The port from the peer's SRV record. Informational only — <strong>not</strong> an
-    /// authorization boundary, and not usable for commands: LightDrop binds HTTP to loopback and
-    /// accepts no inbound commands from peers.
+    /// The port from the peer's SRV record: where its peer listener says it can be reached, and
+    /// what pairing dials. <strong>Not</strong> an authorization boundary — anyone can announce any
+    /// port. What decides trust is the key the connection presents.
     /// </summary>
     public required int Port { get; init; }
 

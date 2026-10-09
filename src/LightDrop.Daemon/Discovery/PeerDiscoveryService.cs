@@ -32,7 +32,10 @@ internal sealed class PeerDiscoveryService(
 
         try
         {
-            await transport.StartAsync(identity, endpoint.Port, cancellationToken).ConfigureAwait(false);
+            // The peer port, not the loopback one: the SRV record now says where this device is
+            // reachable. Advertised even before the listener exists -- it is still not an
+            // authorization boundary, the pinned TLS handshake is.
+            await transport.StartAsync(identity, endpoint.PeerPort, cancellationToken).ConfigureAwait(false);
             status.MarkRunning();
         }
         catch (Exception ex)

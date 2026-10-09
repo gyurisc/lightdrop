@@ -28,8 +28,8 @@ public interface IPeerDiscoveryTransport : IAsyncDisposable
     /// <summary>Begins advertising and browsing.</summary>
     /// <param name="identity">This device's identity, as advertised to peers.</param>
     /// <param name="servicePort">
-    /// The port placed in the SRV record. Informational: it is not reachable across the network
-    /// and is not an authorization boundary.
+    /// The port placed in the SRV record: the peer listener's. Not an authorization boundary —
+    /// the pinned TLS handshake on that port is.
     /// </param>
     Task StartAsync(DeviceIdentity identity, int servicePort, CancellationToken cancellationToken = default);
 

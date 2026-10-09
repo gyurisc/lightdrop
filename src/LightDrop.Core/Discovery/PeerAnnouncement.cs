@@ -57,9 +57,9 @@ public sealed record PeerAnnouncement
     /// The port carried in the peer's SRV record.
     /// </summary>
     /// <remarks>
-    /// Informational only. It is <strong>not</strong> an authorization boundary and nothing can
-    /// be sent to it: LightDrop accepts no inbound commands, and every daemon binds HTTP to
-    /// loopback, so this port is not reachable across the network at all.
+    /// The peer listener's port, which pairing dials. It is <strong>not</strong> an authorization
+    /// boundary: anyone can announce any port, and what is trusted is the key a connection
+    /// presents, checked by the pinned TLS handshake.
     /// </remarks>
     public required int Port { get; init; }
 

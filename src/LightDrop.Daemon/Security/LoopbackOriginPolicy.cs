@@ -80,20 +80,13 @@ internal static class LoopbackOriginMiddleware
     /// entirely; do not short-circuit an endpoint that needs origin/Host protection.
     /// </para>
     /// <para>
-    /// <strong>This applies to every listener on this <see cref="WebApplication"/>.</strong> M2
-    /// adds an ephemeral LAN listener in the same process for inbound pairing; a POST arriving on
-    /// that listener carries <c>Host: &lt;LAN IP&gt;:&lt;port&gt;</c>, which will not match the
-    /// loopback authority checked here and will get a silent 403.
-    /// <strong>The fix is not to exempt that port from this check.</strong> <see
-    /// cref="LightDropDaemon.Create"/> builds one <c>WebApplication</c> — one pipeline, one route
-    /// table, carrying <c>/health</c>, <c>/api/peers</c> and the UI page. Relaxing the origin check
-    /// for the LAN listener's port would expose every one of those endpoints on it, not just the
-    /// pairing endpoint that needs to be reachable — during the 60-second pairing window, before any
-    /// pin exists to gate anything, any LAN caller could read this device's identity and every
-    /// discovered peer's address. What needs scoping is the LAN listener's <em>routing</em>, not
-    /// this check: either endpoint metadata restricting which endpoints that listener serves, or a
-    /// separate <c>WebApplication</c> for it, so the pairing endpoint is the only thing reachable
-    /// from the LAN in the first place.
+    /// <strong>This applies to every listener on this <see cref="WebApplication"/>, so it must
+    /// never gain a LAN one.</strong> A request arriving from the LAN carries
+    /// <c>Host: &lt;LAN IP&gt;:&lt;port&gt;</c> and would get a silent 403 here — and exempting
+    /// that port would expose <c>/health</c>, <c>/api/*</c> and the UI to the network along with
+    /// whatever needed to be reachable. The peer listener is therefore a separate
+    /// <c>WebApplication</c> (<see cref="Peers.PeerListener"/>) with its own route table holding
+    /// only peer routes; requests to it never pass through this middleware at all.
     /// </para>
     /// A rejected request gets 403 and no body — there is nothing useful to tell a caller that
     /// should not be here.

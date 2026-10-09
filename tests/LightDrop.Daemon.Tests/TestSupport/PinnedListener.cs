@@ -15,8 +15,8 @@ namespace LightDrop.Daemon.Tests.TestSupport;
 /// A real Kestrel HTTPS listener on loopback that pins the certificate its caller presents.
 /// </summary>
 /// <remarks>
-/// Loopback, and only ever started by a test. This slice adds no LAN-reachable listener — that is
-/// a later decision, made where the pairing window is.
+/// Loopback, and only ever started by a test. It exercises <see cref="PairingTls"/>'s pinned
+/// listener mode in isolation; the daemon's real peer listener is covered by PeerListenerTests.
 /// </remarks>
 internal sealed class PinnedListener : IAsyncDisposable
 {

@@ -86,8 +86,24 @@ public sealed record PairHelloRequest
     public required int ProtocolVersion { get; init; }
 }
 
-/// <summary>Response to <c>POST /pair/hello</c>: who actually answered.</summary>
+/// <summary>
+/// Response to <c>POST /pair/hello</c>: who actually answered, and its commitment to the nonce it
+/// will reveal once the dialer has revealed its own.
+/// </summary>
 public sealed record PairHelloResponse
 {
     public required string DeviceId { get; init; }
+
+    /// <summary><see cref="Pairing.PairingCode.Commit"/>; 32 bytes, base64 on the wire.</summary>
+    public required byte[] Commitment { get; init; }
+}
+
+/// <summary>
+/// One side's nonce: the body of <c>POST /pair/reveal</c> from the dialer, and the listener's
+/// answer to it.
+/// </summary>
+public sealed record PairingNonce
+{
+    /// <summary><see cref="Pairing.PairingCode.NonceLength"/> bytes, base64 on the wire.</summary>
+    public required byte[] Nonce { get; init; }
 }

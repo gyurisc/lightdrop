@@ -42,7 +42,19 @@ public static class LightDropDaemon
     public static WebApplication Create(
         DaemonEndpointOptions? endpoint = null,
         string? dataDirectory = null,
-        IPeerDiscoveryTransport? peerDiscoveryTransport = null)
+        IPeerDiscoveryTransport? peerDiscoveryTransport = null) =>
+        Create(endpoint, dataDirectory, peerDiscoveryTransport, TimeProvider.System);
+
+    /// <param name="pairingClock">
+    /// The clock pairing deadlines are measured against. Tests pass one they drive, so a deadline
+    /// can be crossed without waiting a minute for it. Only pairing reads it: discovery's expiry
+    /// and Kestrel's own timeouts stay on real time.
+    /// </param>
+    internal static WebApplication Create(
+        DaemonEndpointOptions? endpoint,
+        string? dataDirectory,
+        IPeerDiscoveryTransport? peerDiscoveryTransport,
+        TimeProvider pairingClock)
     {
         endpoint ??= DaemonEndpointOptions.FromEnvironment();
         endpoint.Validate();
@@ -54,7 +66,7 @@ public static class LightDropDaemon
 
         ConfigureLogging(builder);
         ConfigureKestrel(builder, endpoint);
-        ConfigureServices(builder, endpoint, dataDirectory, peerDiscoveryTransport);
+        ConfigureServices(builder, endpoint, dataDirectory, peerDiscoveryTransport, pairingClock);
 
         var app = builder.Build();
         app.UseLoopbackOriginCheck(endpoint);
@@ -151,7 +163,8 @@ public static class LightDropDaemon
         WebApplicationBuilder builder,
         DaemonEndpointOptions endpoint,
         string? dataDirectory,
-        IPeerDiscoveryTransport? peerDiscoveryTransport)
+        IPeerDiscoveryTransport? peerDiscoveryTransport,
+        TimeProvider pairingClock)
     {
         var services = builder.Services;
 
@@ -203,7 +216,10 @@ public static class LightDropDaemon
         // Pairing crosses from discovery (the registry, for the dial address and sanitized name)
         // into trust (PairingService, for the pin) -- deliberately here, in one class, rather than
         // through any path from the registry itself.
-        services.AddSingleton<PairingCoordinator>();
+        // The clock is handed to the coordinator alone rather than registered as TimeProvider:
+        // the framework resolves that type for itself, and a test's frozen clock must not reach it.
+        services.AddSingleton(provider =>
+            ActivatorUtilities.CreateInstance<PairingCoordinator>(provider, pairingClock));
 
         // A singleton the pairing endpoint can start on demand, and a hosted service so it starts
         // with the daemon when a peer is already pinned and stops with it. Registered last so it

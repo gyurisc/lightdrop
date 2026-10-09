@@ -58,10 +58,20 @@ internal sealed class TestDaemon : IAsyncDisposable
 
     /// <param name="deviceId">Fixes the role this daemon plays: lower id listens.</param>
     /// <param name="trusted">Peers already pinned when the daemon starts.</param>
+    public static Task<TestDaemon> StartAsync(
+        string deviceId,
+        string name,
+        params TrustedPeer[] trusted) =>
+        StartAsync(deviceId, name, trusted, clock: null);
+
+    /// <param name="clock">Pairing deadlines are measured against this; real time when null.</param>
+    /// <param name="peerHost">Where the peer listener binds. Loopback unless a test needs a bind to fail.</param>
     public static async Task<TestDaemon> StartAsync(
         string deviceId,
         string name,
-        params TrustedPeer[] trusted)
+        TrustedPeer[] trusted,
+        TimeProvider? clock,
+        string peerHost = "127.0.0.1")
     {
         var directory = new TempDataDirectory();
 
@@ -77,11 +87,11 @@ internal sealed class TestDaemon : IAsyncDisposable
             PeerPort = FreeTcpPort.Get(),
 
             // Never the default 0.0.0.0: a test must not open a LAN-reachable socket.
-            PeerHost = "127.0.0.1",
+            PeerHost = peerHost,
         };
 
         var transport = new FakePeerDiscoveryTransport();
-        var app = LightDropDaemon.Create(endpoint, directory.FullPath, transport);
+        var app = LightDropDaemon.Create(endpoint, directory.FullPath, transport, clock ?? TimeProvider.System);
         await app.StartAsync(CancellationToken.None);
 
         return new TestDaemon(deviceId, name, directory, endpoint, transport, app);

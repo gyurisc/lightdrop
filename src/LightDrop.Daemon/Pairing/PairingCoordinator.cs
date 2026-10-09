@@ -23,9 +23,10 @@ internal enum PairingStartOutcome
 
 internal sealed record PairingStartResult(PairingStartOutcome Outcome, PairingStatus? Status, string? Error);
 
-internal enum PeerConfirmOutcome
+/// <summary>How a pairing request from the other device, after hello, is answered.</summary>
+internal enum PeerRequestOutcome
 {
-    /// <summary>Answer with this side's decision.</summary>
+    /// <summary>Answer with this side's part.</summary>
     Answered,
 
     /// <summary>The caller is not the key that joined.</summary>
@@ -35,7 +36,9 @@ internal enum PeerConfirmOutcome
     Conflict,
 }
 
-internal readonly record struct PeerConfirmResult(PeerConfirmOutcome Outcome, bool Accepted = false);
+internal readonly record struct PeerRevealResult(PeerRequestOutcome Outcome, byte[]? Nonce = null);
+
+internal readonly record struct PeerConfirmResult(PeerRequestOutcome Outcome, bool Accepted = false);
 
 /// <summary>
 /// Runs pairing sessions: one at a time, over loopback for the local user and over the peer
@@ -49,10 +52,13 @@ internal readonly record struct PeerConfirmResult(PeerConfirmOutcome Outcome, bo
 /// <strong>The flow.</strong> Both users start a session naming the other device. The lower
 /// device id listens on its peer listener; the higher one dials <c>POST /pair/hello</c> about once
 /// a second until it is answered, capturing the listener's key from the TLS handshake while the
-/// listener captures the dialer's. Both derive the code and show it. When the dialer's user
-/// answers, it sends <c>POST /pair/confirm</c> to the <em>same</em> key; the listener holds that
-/// request open until its own user answers, then replies with that answer. Each side pins only
-/// if both said yes.
+/// listener captures the dialer's. The hello answer carries the listener's commitment to a nonce;
+/// the dialer reveals its own nonce with <c>POST /pair/reveal</c> and gets the listener's back,
+/// which must open the commitment (<see cref="PairingCode"/> explains why the order matters). Both
+/// derive the code and show it. When the dialer's user answers, it sends <c>POST /pair/confirm</c>;
+/// the listener holds that request open until its own user answers, then replies with that answer.
+/// Every request after hello goes to, and must come from, the <em>same</em> key that met at
+/// hello. Each side pins only if both said yes.
 /// </para>
 /// </remarks>
 internal sealed class PairingCoordinator(
@@ -61,12 +67,13 @@ internal sealed class PairingCoordinator(
     DeviceIdentityProvider identities,
     DeviceKeyProvider keys,
     IHostApplicationLifetime lifetime,
+    TimeProvider time,
     ILogger<PairingCoordinator> logger) : IDisposable
 {
     /// <summary>How often the dialer tries again while the other side is not answering yet.</summary>
     private static readonly TimeSpan DialInterval = TimeSpan.FromSeconds(1);
 
-    /// <summary>Per attempt: a hello that hangs must not eat the whole join window.</summary>
+    /// <summary>Per attempt: a hello or reveal that hangs must not eat the whole join window.</summary>
     private static readonly TimeSpan HelloTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>Lets the listener's own expiry answer the confirm, rather than racing it.</summary>
@@ -80,7 +87,7 @@ internal sealed class PairingCoordinator(
 
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _pinGate = new(1, 1);
-    private readonly TimeProvider _time = TimeProvider.System;
+    private readonly TimeProvider _time = time;
 
     private ActiveSession? _active;
     private TaskCompletionSource _changed = NewSignal();
@@ -292,13 +299,45 @@ internal sealed class PairingCoordinator(
         var identity = await identities.GetAsync(cancellationToken).ConfigureAwait(false);
 
         if (!PinnedCertificate.TryExportPublicKeyInfo(clientCertificate, out var peerKey)
-            || !session.TryJoin(peerKey))
+            || session.JoinAsListener(peerKey) is not { } commitment)
         {
             return null;
         }
 
-        OnJoined(active);
-        return new PairHelloResponse { DeviceId = identity.Id };
+        var snapshot = session.Snapshot();
+        PairingLog.Joined(logger, snapshot.PeerName, snapshot.PeerDeviceId);
+        return new PairHelloResponse { DeviceId = identity.Id, Commitment = commitment };
+    }
+
+    /// <summary>
+    /// <c>POST /pair/reveal</c> on the listening side: the dialer reveals its nonce and gets this
+    /// side's, which opens the commitment sent with hello. The code exists from here on.
+    /// </summary>
+    public PeerRevealResult RevealFromPeer(PairingNonce request, X509Certificate2? clientCertificate)
+    {
+        var active = Current;
+        if (active is null || active.Session.Role != PairingRole.Listener)
+        {
+            return new PeerRevealResult(PeerRequestOutcome.Conflict);
+        }
+
+        var session = active.Session;
+
+        // The same rule as confirm, for the same reason: only the key that joined at hello may
+        // take part. A stranger revealing first would fix the dialer's half of the code.
+        if (!PinnedCertificate.TryExportPublicKeyInfo(clientCertificate, out var presented)
+            || !session.IsPeerKey(presented))
+        {
+            return new PeerRevealResult(PeerRequestOutcome.Forbidden);
+        }
+
+        if (session.RevealAsListener(request.Nonce) is not { } nonce)
+        {
+            return new PeerRevealResult(PeerRequestOutcome.Conflict);
+        }
+
+        OnCodeShown(active);
+        return new PeerRevealResult(PeerRequestOutcome.Answered, nonce);
     }
 
     /// <summary>
@@ -313,7 +352,7 @@ internal sealed class PairingCoordinator(
         var active = Current;
         if (active is null || active.Session.Role != PairingRole.Listener)
         {
-            return new PeerConfirmResult(PeerConfirmOutcome.Conflict);
+            return new PeerConfirmResult(PeerRequestOutcome.Conflict);
         }
 
         var session = active.Session;
@@ -324,7 +363,7 @@ internal sealed class PairingCoordinator(
         if (!PinnedCertificate.TryExportPublicKeyInfo(clientCertificate, out var presented)
             || !session.IsPeerKey(presented))
         {
-            return new PeerConfirmResult(PeerConfirmOutcome.Forbidden);
+            return new PeerConfirmResult(PeerRequestOutcome.Forbidden);
         }
 
         session.RecordPeerDecision(request.Accepted);
@@ -342,17 +381,33 @@ internal sealed class PairingCoordinator(
         }
         catch (OperationCanceledException)
         {
-            return new PeerConfirmResult(PeerConfirmOutcome.Conflict);
+            // The dialer stopped waiting -- Ctrl+C, a restart, a dropped link -- or this side is
+            // shutting down. Its "yes" counted only while it could hear the answer; left behind,
+            // this side's user saying yes later would reach both-accepted with nothing left to pin
+            // or to tell. Atomic with the local decision: if both already accepted, it stays, and
+            // the pin goes ahead below even though nobody will read this response.
+            if (session.WithdrawPeerDecision())
+            {
+                return new PeerConfirmResult(PeerRequestOutcome.Conflict);
+            }
+        }
+
+        // Before the both-accepted check, which is false once pinned: a dialer whose first confirm
+        // was pinned here but never answered -- a dropped connection -- retries, and must hear yes
+        // rather than conclude the other side gave up.
+        if (session.State == PairingState.Paired)
+        {
+            return new PeerConfirmResult(PeerRequestOutcome.Answered, Accepted: true);
         }
 
         if (session.BothAccepted)
         {
-            return new PeerConfirmResult(PeerConfirmOutcome.Answered, await PinAsync(active).ConfigureAwait(false));
+            return new PeerConfirmResult(PeerRequestOutcome.Answered, await PinAsync(active).ConfigureAwait(false));
         }
 
         return session.State == PairingState.Rejected
-            ? new PeerConfirmResult(PeerConfirmOutcome.Answered, Accepted: false)
-            : new PeerConfirmResult(PeerConfirmOutcome.Conflict);
+            ? new PeerConfirmResult(PeerRequestOutcome.Answered, Accepted: false)
+            : new PeerConfirmResult(PeerRequestOutcome.Conflict);
     }
 
     public void Dispose()
@@ -372,15 +427,33 @@ internal sealed class PairingCoordinator(
 
         try
         {
-            var listenerKey = await DialHelloAsync(session, address, local, localId, stop.Token)
-                .ConfigureAwait(false);
-
-            if (listenerKey is null)
+            if (await DialHelloAsync(session, address, local, localId, stop.Token).ConfigureAwait(false)
+                is not { } joined)
             {
                 return;
             }
 
-            OnJoined(active);
+            var (listenerKey, dialerNonce) = joined;
+            PairingLog.Joined(logger, session.PeerName, session.PeerDeviceId);
+
+            // Pinned to the key hello met, through the existing mutation-tested pinned handler --
+            // not the capturing one. Everything from here on carries this side's half of the code
+            // and then the "yes" that leads to a pin, so it must reach the device whose key the
+            // code is derived from and nobody else.
+            using var handler = PairingTls.CreateHandler(local, listenerKey);
+
+            // Infinite, deliberately: the listener holds the confirm open until its user answers.
+            // HttpClient's 100-second default happens to exceed today's 60-second window, but a
+            // timeout that is right only because of how two unrelated constants compare is a bug
+            // waiting for one of them to change. Each request below is bounded explicitly.
+            using var client = CreateClient(handler, address, Timeout.InfiniteTimeSpan);
+
+            if (!await RevealAsync(session, client, address, dialerNonce, stop.Token).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            OnCodeShown(active);
 
             await WaitUntilAsync(active, () => session.LocalDecision is not null || !session.IsOpen, stop.Token)
                 .ConfigureAwait(false);
@@ -392,7 +465,7 @@ internal sealed class PairingCoordinator(
             }
 
             // Sent for a "no" too: the listener learns now rather than at its deadline.
-            if (await SendConfirmAsync(session, address, local, listenerKey, decision, stop.Token)
+            if (await SendConfirmAsync(session, client, address, decision, stop.Token)
                     .ConfigureAwait(false) is { } peerAccepted)
             {
                 session.RecordPeerDecision(peerAccepted);
@@ -422,9 +495,9 @@ internal sealed class PairingCoordinator(
 
     /// <summary>
     /// Dials <c>hello</c> until the listener answers as the expected device, returning the key it
-    /// presented, or null if the window closed first.
+    /// presented and this side's nonce to reveal, or null if the window closed first.
     /// </summary>
-    private async Task<byte[]?> DialHelloAsync(
+    private async Task<(byte[] ListenerKey, byte[] DialerNonce)?> DialHelloAsync(
         PairingSession session,
         Uri address,
         DeviceKeyPair local,
@@ -468,9 +541,11 @@ internal sealed class PairingCoordinator(
                             return null;
                         }
 
-                        if (capture.Key is { } listenerKey && session.TryJoin(listenerKey))
+                        if (capture.Key is { } listenerKey
+                            && answer?.Commitment is { } commitment
+                            && session.JoinAsDialer(listenerKey, commitment) is { } dialerNonce)
                         {
-                            return listenerKey;
+                            return (listenerKey, dialerNonce);
                         }
 
                         session.Fail("The other device's key could not be used for pairing. Nothing was saved.");
@@ -501,28 +576,80 @@ internal sealed class PairingCoordinator(
     }
 
     /// <summary>
+    /// Reveals this side's nonce and opens the listener's commitment with the nonce it answers
+    /// with. Returns whether the code is now showing.
+    /// </summary>
+    private async Task<bool> RevealAsync(
+        PairingSession session,
+        HttpClient client,
+        Uri address,
+        byte[] dialerNonce,
+        CancellationToken cancellationToken)
+    {
+        var body = new PairingNonce { Nonce = dialerNonce };
+
+        // Retried on a transient failure with the same nonce, which the listener answers the same
+        // way every time. Bounded by the join window, as hello is.
+        while (session.State == PairingState.WaitingForPeer)
+        {
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attempt.CancelAfter(HelloTimeout);
+
+            try
+            {
+                using var response = await client
+                    .PostAsJsonAsync("pair/reveal", body, LightDropJsonContext.Default.PairingNonce, attempt.Token)
+                    .ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    session.Fail("The other device ended the pairing session before the code was shown. Nothing was saved.");
+                    return false;
+                }
+
+                var answer = await response.Content
+                    .ReadFromJsonAsync(LightDropJsonContext.Default.PairingNonce, attempt.Token)
+                    .ConfigureAwait(false);
+
+                // Fails the session itself when the nonce does not open the commitment.
+                return answer?.Nonce is { } listenerNonce && session.OpenAsDialer(listenerNonce);
+            }
+            catch (HttpRequestException ex) when (ex.InnerException is AuthenticationException)
+            {
+                FailOnKeyChange(session);
+                return false;
+            }
+            catch (HttpRequestException ex)
+            {
+                PairingLog.DialRetry(logger, session.PeerName, address.Authority, ex);
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                PairingLog.DialRetry(logger, session.PeerName, address.Authority, ex);
+            }
+            catch (JsonException)
+            {
+                session.Fail("The other device sent an answer this build could not read. Nothing was saved.");
+                return false;
+            }
+
+            await Task.Delay(DialInterval, cancellationToken).ConfigureAwait(false);
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Sends this device's answer to the listener and returns the listener's, or null if none
     /// arrived before the window closed.
     /// </summary>
     private async Task<bool?> SendConfirmAsync(
         PairingSession session,
+        HttpClient client,
         Uri address,
-        DeviceKeyPair local,
-        byte[] listenerKey,
         bool decision,
         CancellationToken cancellationToken)
     {
-        // Pinned to the key hello met, through the existing mutation-tested pinned handler -- not
-        // the capturing one. This request carries the "yes" that leads to a pin, so it must reach
-        // the device whose key the code on screen was derived from and nobody else.
-        using var handler = PairingTls.CreateHandler(local, listenerKey);
-
-        // Infinite, deliberately: the listener holds this request open until its user answers.
-        // HttpClient's 100-second default happens to exceed today's 60-second window, but a
-        // timeout that is right only because of how two unrelated constants compare is a bug
-        // waiting for one of them to change. The session deadline below is the real bound.
-        using var client = CreateClient(handler, address, Timeout.InfiniteTimeSpan);
-
         var deadline = session.Snapshot().Deadline + ConfirmGrace;
         var body = new PairingDecision { Accepted = decision };
 
@@ -557,12 +684,7 @@ internal sealed class PairingCoordinator(
             }
             catch (HttpRequestException ex) when (ex.InnerException is AuthenticationException)
             {
-                // Something answered at that address holding a different key than the one that
-                // answered hello seconds ago. That is what a man-in-the-middle looks like; retrying
-                // would only give it another go.
-                session.Fail(
-                    "The other device answered with a different key than it used a moment ago. " +
-                    "Pairing stopped; nothing was saved.");
+                FailOnKeyChange(session);
                 return null;
             }
             catch (HttpRequestException ex)
@@ -582,6 +704,16 @@ internal sealed class PairingCoordinator(
             await Task.Delay(DialInterval, cancellationToken).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Something answered at the peer's address holding a different key than the one that
+    /// answered hello seconds ago. That is what a man-in-the-middle looks like; retrying would
+    /// only give it another go.
+    /// </summary>
+    private static void FailOnKeyChange(PairingSession session) =>
+        session.Fail(
+            "The other device answered with a different key than it used a moment ago. " +
+            "Pairing stopped; nothing was saved.");
 
     /// <summary>Pins the peer if both sides accepted. The one place a session leads to a pin.</summary>
     private async Task<bool> PinAsync(ActiveSession active)
@@ -611,13 +743,21 @@ internal sealed class PairingCoordinator(
                 await pairing.PinAsync(session.PeerDeviceId, session.PeerName, peerKey, CancellationToken.None)
                     .ConfigureAwait(false);
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
-                // Already paired -- another path pinned it since this session started.
-                session.Fail(ex.Message);
+                // InvalidOperationException: already paired -- another path pinned it since this
+                // session started -- with a message written for the user. Anything else is the
+                // state write failing. Either way the session must end here: left open, a
+                // both-accepted session would hold the window -- and the TLS gate -- open until
+                // its grace ran out, telling the user nothing.
+                session.Fail(ex is InvalidOperationException
+                    ? ex.Message
+                    : $"Both devices accepted, but saving the pairing failed: {ex.Message}");
                 return false;
             }
 
+            // After a successful write this cannot throw: it checks the two answers, not the
+            // clock, and nothing can take back a "yes" once both were given.
             session.MarkPinned();
             return true;
         }
@@ -629,10 +769,9 @@ internal sealed class PairingCoordinator(
         }
     }
 
-    private void OnJoined(ActiveSession active)
+    private void OnCodeShown(ActiveSession active)
     {
         var snapshot = active.Session.Snapshot();
-        PairingLog.Joined(logger, snapshot.PeerName, snapshot.PeerDeviceId);
         PairingLog.CodeShown(logger, snapshot.PeerName, snapshot.Code ?? "");
         Pulse();
     }
@@ -645,8 +784,14 @@ internal sealed class PairingCoordinator(
             return false;
         }
 
+        // Only when it actually ended: a cancel refused because both sides already accepted must
+        // not abort the pin that is on its way.
         var ended = end(active.Session);
-        active.Cancellation.Cancel();
+        if (ended)
+        {
+            active.Cancellation.Cancel();
+        }
+
         ReportEnd(active);
         Pulse();
         return ended;

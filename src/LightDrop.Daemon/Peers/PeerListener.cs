@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Security;
+using System.Net.Sockets;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Devices;
@@ -82,7 +83,7 @@ internal sealed class PeerListener(
     }
 
     /// <summary>Starts the listener unless it is already running.</summary>
-    /// <exception cref="IOException">The port could not be bound.</exception>
+    /// <exception cref="IOException">The port could not be bound, for whatever reason.</exception>
     public async Task EnsureStartedAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -99,6 +100,18 @@ internal sealed class PeerListener(
             try
             {
                 await app.StartAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (SocketException ex)
+            {
+                // Kestrel wraps only "address in use" in an IOException; every other bind error
+                // escapes raw. Windows refusing a port inside a Hyper-V / WinNAT excluded range
+                // (common with WSL2 or Docker Desktop) is one, an address no interface holds is
+                // another. Rethrown as the one type both callers handle, naming the way out.
+                await app.DisposeAsync().ConfigureAwait(false);
+                throw new IOException(
+                    $"Could not listen on {Endpoint}: {ex.Message}. Set {DaemonEndpointOptions.PeerPortEnvironmentVariable} " +
+                    "to use a different port.",
+                    ex);
             }
             catch
             {

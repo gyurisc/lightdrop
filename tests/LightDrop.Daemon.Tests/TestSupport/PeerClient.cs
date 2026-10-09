@@ -1,9 +1,11 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using LightDrop.Core;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Devices;
+using LightDrop.Core.Pairing;
 using LightDrop.Daemon.Pairing;
 
 namespace LightDrop.Daemon.Tests.TestSupport;
@@ -24,20 +26,56 @@ internal static class PeerClient
         return await client.GetAsync(path);
     }
 
-    public static async Task<HttpResponseMessage> HelloAsync(DeviceKeyPair presenting, Uri listener, string claimedDeviceId)
+    public static async Task<HttpResponseMessage> HelloAsync(
+        DeviceKeyPair presenting,
+        Uri listener,
+        string claimedDeviceId,
+        int protocolVersion = LightDropVersion.Protocol)
     {
         using var client = Create(presenting, listener);
         return await client.PostAsJsonAsync(
             "pair/hello",
-            new PairHelloRequest { DeviceId = claimedDeviceId, ProtocolVersion = LightDropVersion.Protocol },
+            new PairHelloRequest { DeviceId = claimedDeviceId, ProtocolVersion = protocolVersion },
             LightDropJsonContext.Default.PairHelloRequest);
     }
 
-    public static async Task<HttpResponseMessage> ConfirmAsync(DeviceKeyPair presenting, Uri listener, bool accepted)
+    public static async Task<HttpResponseMessage> RevealAsync(DeviceKeyPair presenting, Uri listener, byte[] nonce)
     {
         using var client = Create(presenting, listener);
         return await client.PostAsJsonAsync(
-            "pair/confirm", new PairingDecision { Accepted = accepted }, LightDropJsonContext.Default.PairingDecision);
+            "pair/reveal", new PairingNonce { Nonce = nonce }, LightDropJsonContext.Default.PairingNonce);
+    }
+
+    /// <summary>
+    /// Plays an honest dialer up to the code: hello, then reveal. Returns everything needed to
+    /// derive the code the listener is now showing.
+    /// </summary>
+    public static async Task<JoinedSession> JoinAsync(DeviceKeyPair presenting, Uri listener, string claimedDeviceId)
+    {
+        using var hello = await HelloAsync(presenting, listener, claimedDeviceId);
+        Assert.Equal(HttpStatusCode.OK, hello.StatusCode);
+        var answer = (await hello.Content.ReadFromJsonAsync(LightDropJsonContext.Default.PairHelloResponse))!;
+
+        var dialerNonce = PairingCode.CreateNonce();
+        using var reveal = await RevealAsync(presenting, listener, dialerNonce);
+        Assert.Equal(HttpStatusCode.OK, reveal.StatusCode);
+        var listenerNonce = (await reveal.Content.ReadFromJsonAsync(LightDropJsonContext.Default.PairingNonce))!.Nonce;
+
+        return new JoinedSession(answer.Commitment, dialerNonce, listenerNonce);
+    }
+
+    public static async Task<HttpResponseMessage> ConfirmAsync(
+        DeviceKeyPair presenting,
+        Uri listener,
+        bool accepted,
+        CancellationToken cancellationToken = default)
+    {
+        using var client = Create(presenting, listener);
+        return await client.PostAsJsonAsync(
+            "pair/confirm",
+            new PairingDecision { Accepted = accepted },
+            LightDropJsonContext.Default.PairingDecision,
+            cancellationToken);
     }
 
     /// <summary>Whether anything accepts a TCP connection on the peer port at all.</summary>
@@ -62,3 +100,6 @@ internal static class PeerClient
             Timeout = TimeSpan.FromSeconds(30),
         };
 }
+
+/// <summary>What a test playing the dialer holds once the listener is showing its code.</summary>
+internal sealed record JoinedSession(byte[] Commitment, byte[] DialerNonce, byte[] ListenerNonce);

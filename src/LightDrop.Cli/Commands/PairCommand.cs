@@ -47,8 +47,16 @@ internal sealed class PairCommand(IHttpClientFactory httpClientFactory, DaemonEn
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await CancelSessionAsync(client).ConfigureAwait(false);
             Console.WriteLine();
+
+            if (await CancelSessionAsync(client).ConfigureAwait(false) is { } settled)
+            {
+                // Too late to cancel: both sides had already said yes, so the daemon finished the
+                // pairing. Saying "nothing was saved" over a pin on disk would send the user to
+                // pair again, only to be told to unpair first.
+                return Report(settled);
+            }
+
             Console.WriteLine("Pairing cancelled. Nothing was saved.");
             return 1;
         }
@@ -212,17 +220,34 @@ internal sealed class PairCommand(IHttpClientFactory httpClientFactory, DaemonEn
         }
     }
 
-    /// <summary>Closes the window in the daemon after Ctrl+C. Best effort, with its own deadline.</summary>
-    private static async Task CancelSessionAsync(HttpClient client)
+    /// <summary>
+    /// Closes the window in the daemon after Ctrl+C. Best effort, with its own deadline.
+    /// </summary>
+    /// <returns>
+    /// Null if the session was cancelled, or the daemon could not be asked. Otherwise the session
+    /// had already ended or could no longer be cancelled -- both sides had accepted -- and this is
+    /// how it ended.
+    /// </returns>
+    private static async Task<PairingStatus?> CancelSessionAsync(HttpClient client)
     {
         using var timeout = new CancellationTokenSource(DaemonApi.RequestTimeout);
         try
         {
-            using var _ = await client.DeleteAsync("api/pairing", timeout.Token).ConfigureAwait(false);
+            using (var cancelled = await client.DeleteAsync("api/pairing", timeout.Token).ConfigureAwait(false))
+            {
+                if (cancelled.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+            }
+
+            // The pin is one small file write; wait it out rather than guess.
+            return await PollUntilAsync(client, IsEnded, timeout.Token).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
         {
             // The window expires on its own within a minute either way.
+            return null;
         }
     }
 }

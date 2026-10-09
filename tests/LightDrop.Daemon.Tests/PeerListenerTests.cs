@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
+using LightDrop.Core.Pairing;
 using LightDrop.Daemon.Peers;
 using LightDrop.Daemon.Tests.TestSupport;
 
@@ -57,6 +58,24 @@ public sealed class PeerListenerTests(PairingKeys keys) : IClassFixture<PairingK
         using var response = await PeerClient.GetAsync(keys.Bob, daemon.PeerAddress, "health");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ABindFailureOtherThanPortInUseIsReportedNotFatal()
+    {
+        // 192.0.2.1 is TEST-NET-1, held by no interface, so the bind fails with "address not
+        // available" -- a raw SocketException, where Kestrel reports "in use" as an IOException.
+        // A Windows port inside a Hyper-V excluded range fails the same way. Neither may stop the
+        // daemon starting, and a pairing that cannot listen must say why and close its window.
+        await using var daemon = await TestDaemon.StartAsync(DaemonId, "Desk PC", [Bob], clock: null, peerHost: "192.0.2.1");
+        daemon.Transport.Announce(StrangerId, "Mac Mini", address: "127.0.0.1");
+
+        using var started = await daemon.StartPairingAsync("Mac Mini");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, started.StatusCode);
+        var error = await started.Content.ReadFromJsonAsync(LightDropJsonContext.Default.ApiError);
+        Assert.Contains(DaemonEndpointOptions.PeerPortEnvironmentVariable, error!.Error, StringComparison.Ordinal);
+        Assert.Equal(PairingState.Failed, (await daemon.GetPairingAsync()).State);
     }
 
     [Fact]

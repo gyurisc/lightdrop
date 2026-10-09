@@ -85,11 +85,20 @@ All three are development escape hatches. LightDrop needs none of them to run.
 |---|---|---|
 | `LIGHTDROP_HOST` | `127.0.0.1` | Kestrel listen address. Loopback by design — see below. |
 | `LIGHTDROP_PORT` | `5533` | Kestrel listen port. |
+| `LIGHTDROP_PEER_PORT` | listen port + 1 (`5534`) | The port paired devices connect to. |
 | `LIGHTDROP_DATA_DIR` | `%APPDATA%\LightDrop` (Windows) / `~/Library/Application Support/LightDrop` (macOS) | Where `config.json` and `state.json` live. |
 
-The HTTP endpoint binds to loopback on purpose: nothing is paired yet, so binding to the LAN would
-expose an unauthenticated endpoint to every device on the network. Discovery does not need it —
-peer metadata rides in mDNS TXT records.
+The HTTP endpoint the CLI talks to binds to loopback on purpose, and stays there. The only socket
+on the LAN is a separate **peer listener** on `0.0.0.0:<peer port>`, mutual TLS, which exists only
+once a device is paired or while `lightdrop pair` is running, and admits only pinned peers (anyone
+during an open pairing window, where every route checks the caller's key for itself). A fresh
+install with nothing paired has no LAN socket at all.
+
+**Windows:** the first `lightdrop pair` shows a Defender Firewall prompt for the peer listener.
+Allow it on private networks, or the other device cannot connect. If the peer port falls inside a
+range Windows reserves for Hyper-V (common with WSL2 or Docker Desktop), pairing reports that it
+could not listen; pick another port with `LIGHTDROP_PEER_PORT` on that machine
+(`netsh interface ipv4 show excludedportrange protocol=tcp` lists the reserved ranges).
 
 ### Two daemons on one machine
 

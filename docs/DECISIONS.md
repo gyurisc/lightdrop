@@ -56,6 +56,9 @@ There is no pairing or authentication yet. Binding to the LAN would expose an un
 
 **Revisit at:** M1 (discovery) or M2 (pairing), whichever forces it. See the open question in the roadmap.
 
+**Still true for the loopback app (2026-10-09).** The LAN gets a separate, pinned-only peer
+listener instead — see #26. Nothing on the loopback app is reachable from the network.
+
 ---
 
 ### 8. Hand-rolled CLI dispatch
@@ -124,6 +127,9 @@ endpoint" into "the whole network can trigger it."
 `GET /api/peers` is loopback-only, for the CLI. Pairing is where a peer-to-peer LAN endpoint gets
 opened deliberately — that is when authenticated communication is actually needed.
 
+**That happened on 2026-10-09** (#26): discovery itself still opens nothing, but a paired daemon,
+or one in a pairing window, runs a mutual-TLS peer listener on the LAN.
+
 ---
 
 ### 15. mDNS library: `Makaretu.Dns.Multicast.New`
@@ -152,9 +158,12 @@ runtime: the trimmed binary performs real discovery.
 
 ### 17. Advertise the real SRV port, not 0
 
-DNS-SD requires a port. The advertised port is unreachable (loopback bind), but port `0` is not the
-DNS-SD "no service" signal — `Target="."` is — and zero breaks well-behaved clients for no security
-gain. Documented as not an authorization boundary instead of encoded as one.
+DNS-SD requires a port. Port `0` is not the DNS-SD "no service" signal — `Target="."` is — and
+zero breaks well-behaved clients for no security gain. Documented as not an authorization boundary
+instead of encoded as one.
+
+**Since 2026-10-09 it is the peer listener's port** (#26), so it finally means where the service is
+reachable. Still not an authorization boundary: the TLS pin is.
 
 ---
 
@@ -314,3 +323,40 @@ selecting between OS-specific libraries, or anything that touches a file, socket
 Those belong in the Daemon regardless of how small they look, on the same reasoning that put
 `UnixCreateMode` there. Citing decision 25 to justify one of those in Core is the drift this entry
 exists to head off.
+
+---
+
+### 26. One pinned-only LAN listener, separate from the loopback app
+
+Reopens decision 2 of the 2026-08-16 pairing spec (LAN reachable only during a pairing window),
+because receiving a file needs a listener when nobody is at the keyboard. Decided 2026-10-09.
+
+A **separate `WebApplication`** on `0.0.0.0:<peerPort>`, mutual TLS, started only when a peer is
+pinned or a window opens — a fresh install still has no LAN socket. The TLS handshake is the gate:
+pinned SPKIs only, re-read per connection so an unpair applies to the next one. While a window is
+open the handshake must admit any key (it is the only carrier of a new peer's key), so every route
+also checks the caller's key itself. Separate rather than a second binding because the loopback
+app's routes and its origin check then simply do not exist on the LAN side; `RequireHost` would
+have scoped routes by the attacker-written `Host` header, not the real port.
+
+**Cost:** a listening socket on the LAN whenever anything is paired, and a Windows firewall prompt.
+
+---
+
+### 27. The pairing code commits before it reveals
+
+The 2026-08-16 spec derived the six digits from the two static keys alone, "stable for a given
+device pair". That is broken against an active attacker on the LAN: having seen both honest keys
+(the listener presents its certificate to anyone; the dialer presents its own to whoever answers
+the dial), it generates key pairs until one toward each side yields equal digits. A birthday search
+over 10^6 values — measured at about 1,700 keys and 0.4 s. Both screens then agree, both humans say
+yes, and both pin the attacker.
+
+**Fix, adopted rather than invented:** Bluetooth Secure Simple Pairing's numeric comparison. The
+listener commits to a random nonce in its hello answer, the dialer reveals its nonce, the listener
+reveals its own, and the dialer checks it against the commitment. The code hashes both keys and both
+nonces, so neither side's randomness can be chosen after seeing the other's: one blind try at
+one-in-a-million. Costs one extra round trip (`/pair/reveal`) and the "same digits every time"
+property, which was the vulnerability.
+
+**Not a protocol-version bump:** pairing had never shipped, so version 1 is defined as this.

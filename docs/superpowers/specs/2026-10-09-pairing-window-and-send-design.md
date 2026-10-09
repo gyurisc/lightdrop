@@ -61,7 +61,8 @@ Peer routes (LAN, on the peer listener; small bodies, cap ~4 KB):
 
 | Route | Purpose |
 |---|---|
-| `POST /pair/hello` `{deviceId, protocolVersion}` → `{deviceId}` | Accepted only if this side has an open session, is the listener, the caller's `deviceId` equals the session target, and no peer has joined yet. Captures the caller's client-cert SPKI. Otherwise 409. |
+| `POST /pair/hello` `{deviceId, protocolVersion}` → `{deviceId, commitment}` | Accepted only if this side has an open session, is the listener, the caller's `deviceId` equals the session target, and no peer has joined yet. Captures the caller's client-cert SPKI. Otherwise 409. |
+| `POST /pair/reveal` `{nonce}` → `{nonce}` | *(Added 2026-10-09, `DECISIONS.md` #27.)* Same-SPKI rule as confirm. The dialer reveals its nonce; the listener answers with the nonce its commitment opens to. The first nonce is kept. |
 | `POST /pair/confirm` `{accepted}` → `{accepted}` | Must arrive on a connection presenting the **same SPKI** captured at hello (fixed-time compare). Long-polls until the local user decides or the deadline passes, then answers with the local decision. |
 
 The dialer captures the listener's server-certificate SPKI during the hello handshake, and its
@@ -69,7 +70,8 @@ The dialer captures the listener's server-certificate SPKI during the hello hand
 captured key, or a handler that captures on first handshake and requires equality afterwards).
 The dialer also checks the hello response's `deviceId` equals its target.
 
-Both sides compute `PairingCode.Derive(localSpki, remoteSpki)` and show it. **Each side pins only if
+Both sides compute the code from both keys and both nonces (see `docs/Protocol.md`, *Pairing*) and
+show it. **Each side pins only if
 both users accepted.** Pin via `PairingService.PinAsync`, using the peer's **sanitized name from the
 discovery registry** — never a name claimed in a pairing body (no new untrusted-text surface).
 

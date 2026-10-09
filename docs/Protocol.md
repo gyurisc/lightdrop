@@ -142,11 +142,11 @@ the link and can announce for itself anyway.
 
 ### The SRV port is not an authorization boundary
 
-DNS-SD requires a port in the SRV record, so the daemon's real port is advertised. **It is not
-reachable from the network** — Kestrel binds loopback only — and it does not mean "this peer
-accepts connections". Do not treat it as one until pairing exists. Port `0` was rejected: the
-DNS-SD signal for "no service here" is `Target="."`, not port zero, and zero breaks well-behaved
-clients for no security gain.
+The SRV record advertises the **peer listener's port** (see *Pairing*): where a paired device, or
+one pairing right now, connects. It is still not an authorization boundary — knowing it gets a
+stranger as far as a TLS handshake that refuses any key not pinned. With nothing paired and no
+window open nothing listens on it at all. Port `0` was rejected: the DNS-SD signal for "no service
+here" is `Target="."`, not port zero, and zero breaks well-behaved clients for no security gain.
 
 ### Untrusted input
 
@@ -216,4 +216,44 @@ The local network is not trusted.
 
 Never invent cryptography; use .NET and platform primitives.
 
-Until pairing exists, the daemon binds to **loopback only**. Binding to the LAN before there is authentication would expose an unauthenticated endpoint to every device on the network.
+The loopback app (`/health`, `/api/*`, the UI) binds to **loopback only**, always. The one LAN
+socket is the peer listener below.
+
+## Pairing
+
+Design: `docs/superpowers/specs/2026-10-09-pairing-window-and-send-design.md`; the cryptography is
+`docs/superpowers/specs/2026-08-16-m2-secure-pairing-design.md` as amended there on 2026-10-09.
+
+**The peer listener** is a separate `WebApplication` on `0.0.0.0:<peerPort>` (default loopback port
++ 1, `LIGHTDROP_PEER_PORT`), HTTPS with mutual TLS. It starts at daemon start if any peer is
+pinned, or when a pairing window opens. Its handshake admits a client certificate only if the SPKI
+is pinned in the current `trustedPeers` — or, while a window is open, any certificate, because the
+handshake is the only carrier of a new peer's key; after the window, the key that joined until the
+session's deadline. Its route table holds the peer routes and nothing from the loopback app.
+
+**The ceremony.** Both users run `lightdrop pair <peer>`. The lower device id listens, the higher
+dials. Bodies are JSON, capped at 4 KB; byte fields are base64.
+
+| Route | Body → answer | Rule |
+|---|---|---|
+| `POST /pair/hello` | `{deviceId, protocolVersion}` → `{deviceId, commitment}` | Listener only; caller's id must be the session's target and its version this build's; the first key in joins. The same key repeating hello before revealing gets the same commitment. |
+| `POST /pair/reveal` | `{nonce}` → `{nonce}` | Only from the key that joined. The first nonce is kept; a different one later is refused. |
+| `POST /pair/confirm` | `{accepted}` → `{accepted}` | Only from the key that joined. Held open until the local user answers, then answered with that answer. |
+
+The dialer sends reveal and confirm only to the key it met at hello (pinned client), and abandons
+the session if the listener's nonce does not open its commitment.
+
+```
+commitment = SHA256("lightdrop-sas-commit-v2" || f(spki_listener) || f(spki_dialer) || f(nonce_listener) || f(""))
+code       = SHA256("lightdrop-sas-v2" || f(spki_dialer) || f(spki_listener) || f(nonce_dialer) || f(nonce_listener))
+             first 4 bytes, big-endian -> mod 10^6 -> 6 digits, zero-padded
+f(x)       = uint32 big-endian length of x || x;   nonces are 32 random bytes per session
+```
+
+The listener commits before it sees the dialer's nonce and reveals after — Bluetooth Secure Simple
+Pairing's numeric comparison. A device in the middle therefore gets one blind try at matching six
+digits rather than an offline search, and the digits differ every session.
+
+Each side pins (`trustedPeers`) only when both users said yes, using the peer's name as discovery
+sanitized it. A dialer's "yes" counts only while its confirm is still waiting for the answer; if it
+gives up, it says yes again when it retries. Unpair is local only.

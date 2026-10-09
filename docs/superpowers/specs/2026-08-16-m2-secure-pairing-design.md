@@ -137,6 +137,19 @@ listener and dials the other, with **roles assigned deterministically by
 comparing device ids** — lower id listens, higher id dials. That removes the race
 where both connect at once.
 
+> **Amended 2026-10-09 — the derivation below was broken; see `DECISIONS.md` #27.**
+> Derived from the two static keys alone, six digits fall to an active attacker
+> who has seen both keys: it searches key pairs until one toward each side gives
+> equal digits (a birthday search, well under a second). The derivation is now
+> Bluetooth Secure Simple Pairing's numeric comparison, adopted as-is: the
+> listener commits to a random nonce in its hello answer, the dialer reveals its
+> nonce, the listener reveals its own, the dialer checks the commitment, and the
+> code hashes both keys and both nonces. `docs/Protocol.md` (*Pairing*) has the
+> exact construction. Decision 1 above is unchanged — compare-and-confirm, code
+> never transmitted — but the digits now differ every session.
+
+Original text, kept for the record:
+
 ```
 code = SHA256("lightdrop-sas-v1" || spki_lower || spki_higher)
        first 4 bytes -> mod 10^6 -> 6 digits, zero-padded

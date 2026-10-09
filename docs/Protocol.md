@@ -111,7 +111,8 @@ of the same user can (`DECISIONS.md` #28).
 
 Boring and inspectable.
 
-- Kestrel + HTTP for simple request/response endpoints (`/health`, `/api/peers`)
+- Kestrel + HTTP on loopback for the CLI and the page (`/health`, `/api/*`)
+- Kestrel + HTTPS with mutual TLS on the LAN, peer to peer (`/pair/*`, `/commands/*`)
 - **WebSocket later** for persistent peer sessions
 - JSON contracts
 - Streaming for large payloads; never buffer a whole file
@@ -255,10 +256,13 @@ requires that peer to accept LAN traffic.
 
 The local network is not trusted.
 
-- Stable device identity (implemented)
+- Stable device identity
 - Explicit pairing before any command is accepted
-- Trusted peer store with certificate fingerprint or public-key pinning
-- Unknown peers rejected — no anonymous file writes, no unpaired command execution
+- A trusted peer store pinning each peer's public key (SPKI), not its certificate
+- Unknown peers rejected at the TLS handshake and again per route — no anonymous file writes, no
+  unpaired command execution
+
+All four are implemented.
 
 Never invent cryptography; use .NET and platform primitives.
 
@@ -303,3 +307,19 @@ digits rather than an offline search, and the digits differ every session.
 Each side pins (`trustedPeers`) only when both users said yes, using the peer's name as discovery
 sanitized it. A dialer's "yes" counts only while its confirm is still waiting for the answer; if it
 gives up, it says yes again when it retries. Unpair is local only.
+
+**The loopback side** (`DECISIONS.md` #30): the CLI owns the prompt, the daemon owns the session.
+Behind the origin check, like every loopback write.
+
+| Route | Purpose |
+|---|---|
+| `POST /api/pairing` `{peer}` | Start a session with a **discovered** peer, matched by name (case-insensitive) or id prefix. `404` unknown, `400` ambiguous, `409` already paired or a session is busy, `500` the peer listener could not bind. |
+| `GET /api/pairing` | Snapshot: state, peer, the code once known, a failure reason. |
+| `POST /api/pairing/confirm` `{accepted}` | This user's answer. `409` if no code is waiting. |
+| `DELETE /api/pairing` | Cancel (Ctrl+C in `lightdrop pair`). |
+| `GET /api/trusted` | Paired devices: id, name, when — never key material. |
+| `DELETE /api/trusted/{deviceId}` | Unpair. Only this side forgets; the other keeps its pin until it unpairs too, and its next connection is refused at the handshake. |
+
+Deadlines: 60 s for the other device to join, then 60 s to confirm once the code is shown. Expiry,
+a "no" on either side, or a nonce that does not open its commitment discards the session with
+nothing persisted on either side.

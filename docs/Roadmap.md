@@ -71,7 +71,7 @@ proven causation.
 Settings toggle is the only way back, and the app cannot explain that in-band. The mDNS library is
 a community fork of a project abandoned in 2019.
 
-## M2 — Secure pairing 🔨 in progress
+## M2 — Secure pairing ✅ built — awaiting two-machine verification
 
 **Goal:** peers explicitly trust each other; unknown peers are rejected.
 
@@ -95,8 +95,41 @@ a community fork of a project abandoned in 2019.
 - [x] **A deferred-validation TLS mode** — `dd2c7c2`. The listener admits any key only while a
       window is open; the dialer captures the first key and pins it for the rest of the session.
 - [x] `lightdrop pair`, `lightdrop unpair`, `lightdrop peers --trusted` — `5f2e5c7`.
-- [ ] The pairing ceremony in the web UI (phase B of the companion UI)
-- [ ] Manual verification between two real machines, as with M1
+- [ ] The pairing ceremony in the web UI (phase B of the companion UI) — deferred; the CLI is enough
+      to test with
+- [ ] Manual verification between two real machines — the checklist below
+
+### Verified on one machine (2026-10-09)
+
+Two daemons on one Mac (macOS 15.7.4, Apple Silicon), the **published trimmed osx-arm64 binary**
+built at `cf8e6e9`, **real mDNS**, separate ports and data dirs. This is not the milestone claim —
+both daemons share a loopback interface, a firewall and an OS — but it exercises everything
+except the network between two machines.
+
+- Discovered each other within a second of start; no LAN socket until pairing
+- `pair` run concurrently on both: the **same six digits on both screens** (`851 729`), both pinned,
+  `peers --trusted` lists the other on each side, both peer listeners now on `*:<peerPort>`
+- A second ceremony after unpairing showed a **different** code (`735 743`); answering `n` on one
+  side left `trustedPeers` empty on **both**
+- After a one-sided unpair, the still-pinned side's `send` is refused: "no longer trusts this device"
+- A 1.2 KB, a 13-byte and two 50 MB files, both directions: SHA-256 identical; a repeat arrived as
+  `small (1).bin`; no temp files left behind
+- Restarting a paired daemon reopens the peer listener at start
+- `curl` to the peer port with no client certificate, or an unpinned self-signed one, gets no HTTP
+  response at all — `/health` and `/commands/SendFile` alike
+
+### Manual verification between two real machines
+
+Not done. Each needs a clean `state.json` the first time, and a `downloadFolder` worth checking.
+
+- [ ] Both machines discover each other (`lightdrop peers`), as in M1
+- [ ] `lightdrop pair` on both within a minute: same code on both screens, both pinned
+- [ ] Windows: the Defender Firewall prompt appears for the peer port; allowed → pairing works;
+      **denied** → what the user sees
+- [ ] macOS: a Local Network or firewall prompt for the incoming peer port, if any
+- [ ] Answering `n` on one side: nothing pinned on either
+- [ ] Ctrl+C during `pair` on one side: the other times out cleanly, nothing pinned
+- [ ] Restart both daemons: still paired, peer listener up at start
 
 ### Known traps
 
@@ -117,8 +150,12 @@ a community fork of a project abandoned in 2019.
 - [x] Sender hardened against its receiver and the network: sanitized errors, no proxy, a bounded
       dial (#29), exactly the declared length sent
 - [ ] Progress reporting (the CLI reports size, duration and throughput at the end only)
-- [ ] Manual verification between two real machines: pair, send both ways, a large file, Ctrl+C
-      mid-send, unpair then send. Windows will show a Defender Firewall prompt for the peer port.
+- [ ] Manual verification between two real machines (one-Mac smoke test passed, see M2):
+  - [ ] send a small and a multi-GB file both ways; checksums match; throughput is reasonable over
+        Wi-Fi and Ethernet
+  - [ ] Ctrl+C mid-send: nothing appears under the final name on the receiver
+  - [ ] unpair on the receiver, then send: refused
+  - [ ] a peer that went to sleep: `send` fails within ~10 s, not 75
 
 **Known gap:** if the peer port cannot be bound when the daemon starts with peers already paired
 (another process holds it, or it falls in a Hyper-V excluded range on Windows), the daemon logs one

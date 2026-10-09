@@ -1,6 +1,10 @@
 # Pairing window and first file transfer — design
 
-Status: **agreed 2026-10-09, being implemented.** Goal: make LightDrop usable end to end so it can
+Status: **agreed and implemented 2026-10-09** (`161a022`..`cf8e6e9`; deviations recorded in
+`docs/DECISIONS.md` #26–#31, notably the commit-then-reveal code, #27). Verified on one Mac with two
+daemons; two-machine verification is still open (`docs/Roadmap.md` M2).
+
+Goal: make LightDrop usable end to end so it can
 be tested on two real machines — pair once, then `lightdrop send <file> <peer>`.
 
 Binding authority for the cryptography remains

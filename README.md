@@ -28,8 +28,9 @@ LightDrop makes nearby devices feel like they're part of the same workstation.
 ## Status
 
 **Early development, ready to try between two machines.** Devices discover each other on the
-local network, pair once by comparing a six-digit code, and then send files to each other. Not yet
-verified between two real machines; see `docs/Roadmap.md`.
+local network, pair once by comparing a six-digit code, and then send files to each other.
+Discovery is verified between Windows and macOS; pairing and transfer so far only between two
+daemons on one Mac (`docs/Roadmap.md` M2). Clipboard, screenshots and live progress are not built.
 
 ```bash
 lightdrop daemon                     # run the daemon (on both machines)
@@ -50,6 +51,31 @@ prompt. Allow both. (On macOS 15.7.4 discovery kept working even with the permis
 the requirement is not as absolute as it appears — but do not rely on that.) Networks that block
 multicast — many corporate
 and guest networks — prevent it entirely.
+
+## Try it on two machines
+
+1. **Get the binary onto both** — publish it (below) or `dotnet run` from a clone on each. On
+   macOS, `chmod +x lightdrop`; if Gatekeeper refuses a copied binary,
+   `xattr -d com.apple.quarantine lightdrop`.
+2. **Run the daemon on both** and leave it running: `lightdrop daemon`. Allow the macOS Local
+   Network prompt. Both machines need to be on the same network, one that allows multicast.
+3. **Check they see each other**, from a second terminal on each: `lightdrop peers`. This can take
+   a few seconds; if it stays empty, see *When multicast is blocked* in `docs/Protocol.md`.
+4. **Pair**, on both, within a minute of each other: `lightdrop pair "<the other's name>"`. Both
+   print a six-digit code. Answer `y` only if the two codes are the same.
+   **Windows** shows a Defender Firewall prompt here, for the peer port: allow it on private
+   networks or the other machine cannot connect.
+5. **Send:** `lightdrop send ./photo.jpg "<the other's name>"`. The file lands in the receiver's
+   `~/Downloads` (or `downloadFolder` from its `config.json`), never overwriting:
+   a second `photo.jpg` arrives as `photo (1).jpg`.
+
+`lightdrop peers --trusted` lists paired devices; `lightdrop unpair "<name>"` forgets one on this
+side only. The daemon's terminal logs every pairing step and every file received, with the peer's
+name — the first place to look when something fails.
+
+Ports: the CLI talks to `127.0.0.1:5533`; paired machines connect to each other on **5534/tcp**.
+If that is taken or blocked, set `LIGHTDROP_PEER_PORT` on that machine before starting the daemon
+— the other side learns the new port from discovery.
 
 ## Build and run from source
 
@@ -150,7 +176,7 @@ dotnet publish src/LightDrop.Cli -c Release -r osx-arm64 --self-contained \
 ```
 
 The binary lands in `src/LightDrop.Cli/bin/Release/net10.0/<rid>/publish/` as `lightdrop.exe`
-(~19 MB on Windows) or `lightdrop`. Copy it anywhere and run it — that is the whole install:
+(about 20 MB) or `lightdrop` (about 20 MB). Copy it anywhere and run it — that is the whole install:
 
 ```bash
 ./lightdrop daemon
@@ -192,11 +218,15 @@ Neither installs anything. They point at the executable wherever you already kee
 - Cross-platform (Windows & macOS)
 - Single portable executable
 
-## Planned
+## Done
 
 - Peer discovery
 - Secure pairing
-- File transfer
+- File transfer (one file at a time, from the CLI)
+
+## Planned
+
+- Progress, and pairing from the page
 - Clipboard text
 - Clipboard images
 - Screenshots

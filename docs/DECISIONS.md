@@ -399,3 +399,30 @@ slept or left Wi-Fi stays in the registry for up to 180 s, and a firewall droppi
 nothing, so without it `lightdrop send` sat silent for the OS connect timeout (75 s on macOS) — or
 for ever against something that accepts TCP and never speaks TLS. The transfer itself keeps no
 timeout, because a multi-gigabyte file legitimately takes minutes; Ctrl+C is the bound.
+
+---
+
+### 30. The CLI owns the prompt; the daemon owns the pairing session
+
+Settles the 2026-08-16 spec's open question. The session lives in the daemon (`PairingCoordinator`
+over Core's `PairingSession`) because the daemon holds the key, the listener and the dial; a session
+is never persisted, so it is discarded on expiry or restart. The terminal belongs
+to the CLI, which starts a session over loopback (`POST /api/pairing`), polls it, prints the code,
+asks `[y/N]` and posts the answer. No loopback request blocks on the other device, and Ctrl+C is a
+`DELETE /api/pairing`.
+
+**Cost:** polling, at human speed, on loopback. **Bonus:** the companion UI can drive the same
+four routes later without the daemon learning anything new.
+
+---
+
+### 31. Received files default to `~/Downloads`, and `downloadFolder` is re-read per file
+
+Zero configuration means the default must be right without a `config.json`: `home/Downloads` on
+both platforms, created if missing. Deliberately not the Windows known-folder API, which can be
+redirected — right in the common case, and `downloadFolder` covers the rest. `~` and relative
+values resolve against home, never the daemon's working directory, which nobody editing the file
+can know. Re-read for every file, so an edit applies without a restart.
+
+Never overwrite, never half a file: stream to a hidden temp file in the same folder, reserve
+`name (n).ext` with an atomic create-if-absent, then move over the reservation (`DownloadFolder`).

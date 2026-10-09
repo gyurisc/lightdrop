@@ -50,16 +50,17 @@ The logic/I-O split sits one notch from the obvious place on purpose: `DeviceIde
 
 `IConfigStore` / `IStateStore` exist because infrastructure implements them and tests substitute them. `ICliCommand` exists because DI resolves it as a collection.
 
-`DeviceIdentityProvider` and `HealthService` are **concrete classes** — each has one implementation and no test double. Do not add an interface because "services get interfaces." When the peer registry arrives, it does not need `IPeerRegistry`: an in-memory registry has no boundary to abstract.
+`DeviceIdentityProvider`, `HealthService`, `PeerRegistry`, `PairingCoordinator` and `PeerListener` are **concrete classes** — each has one implementation and no test double. Do not add an interface because "services get interfaces." `ICommandHandler` is the DI-collection exception, like `ICliCommand`.
 
-## The protocol direction is command-oriented — but nothing is built yet
+## The protocol is command-oriented, sized to one handler
 
-New capabilities should become **registered handlers, not new endpoints**. See `docs/Protocol.md`.
+New capabilities should become **registered handlers, not new endpoints**: `POST /commands/{name}` on the peer listener, `ICommandHandler` in DI. See `docs/Protocol.md`.
 
-A command envelope, dispatcher and registry were written and then **deleted** before any handler existed (`docs/DECISIONS.md` #11). Do not rebuild them until the file-transfer milestone, and then size them to what a real handler needs. Two rules must survive that rebuild:
+The scaffold was built, deleted before any handler existed (`docs/DECISIONS.md` #11), and rebuilt for `SendFile` alone (#28). Grow it when a second handler needs more — a reply stream, a persistent session (M4) — not before. Three rules must survive:
 
-- **Capabilities are derived from the registered handler set**, never hand-maintained. `HealthResponse.Capabilities` currently returns `[]`.
-- **The envelope carries metadata only.** File bytes stream separately; no base64-in-JSON, no whole-file buffering.
+- **Capabilities are derived from the registered handler set**, never hand-maintained (`CommandServices.AddCommandHandlers`).
+- **Metadata travels apart from the bytes.** Metadata in the `LightDrop-Metadata` header; the body is the raw stream. No base64-in-JSON, no whole-file buffering.
+- **The pin check guards the whole `/commands` group**, so a new handler cannot forget it.
 
 `/health` stays a plain HTTP GET, not a command — it is the bootstrap probe and must answer before any socket, pairing, or negotiation exists.
 
@@ -70,8 +71,8 @@ Peers are **nearby strangers**. Three invariants that should fail review if brok
 - **Nothing under `Discovery` may reference `IStateStore`.** A discovered peer must never reach
   `state.json` or `trustedPeers`. Pairing crosses that boundary explicitly, not by inheriting a
   path that already exists.
-- **Kestrel stays loopback-bound.** All peer metadata rides in mDNS TXT records, so discovery added
-  no LAN-reachable HTTP. `GET /api/peers` is for the local CLI.
+- **Discovery opens no socket.** All peer metadata rides in mDNS TXT records. `GET /api/peers` is
+  for the local CLI. The one LAN socket belongs to pairing (below), not discovery.
 - **The registry stays bounded** (256, least-recently-seen eviction). Anyone on the link can invent
   unlimited identifiers.
 
@@ -96,11 +97,18 @@ If the app writes it, it is state. Putting `trustedPeers` in config would mean p
 
 Failure behavior is intentionally asymmetric: **config unreadable → warn and use defaults** (a typo must not kill a background utility); **state corrupt → throw** (silently starting fresh would mint a new `deviceId` and invalidate every pairing everywhere). `JsonStateStore` writes temp-file-then-rename, and creates the file `0600` on Unix behind an `OperatingSystem.IsWindows()` guard — `UnixCreateMode` throws on Windows rather than being ignored.
 
-Configuration deliberately avoids `ConfigurationBuilder` and `appsettings.json`. Defaults live in code; `IOptions<T>` is fed by hand. `LIGHTDROP_HOST` / `LIGHTDROP_PORT` are a development escape hatch.
+Configuration deliberately avoids `ConfigurationBuilder` and `appsettings.json`. Defaults live in code; `IOptions<T>` is fed by hand. `LIGHTDROP_HOST` / `LIGHTDROP_PORT` / `LIGHTDROP_PEER_PORT` / `LIGHTDROP_DATA_DIR` are development escape hatches.
 
-## Kestrel binds to loopback by default
+## The loopback app stays on loopback; the LAN gets one pinned-only listener
 
-`127.0.0.1:5533`. A security decision, not an oversight: there is no pairing yet, so LAN binding would expose an unauthenticated endpoint to every device on the network. **Do not change this without pairing or an explicit decision** — see the open question in `docs/Roadmap.md` M1.
+The loopback app — `/health`, `/api/*`, the page — binds `127.0.0.1:5533` and **never moves**. Several of its routes (`/api/send`, `/api/pairing`) are trusted precisely because only local processes reach them.
+
+The one deliberate exception (`docs/DECISIONS.md` #26) is the **peer listener**: a *separate* `WebApplication` on `0.0.0.0:<peerPort>` (loopback port + 1, `LIGHTDROP_PEER_PORT`), mutual TLS, started only when a peer is pinned or a pairing window opens. Invariants that should fail review if broken:
+
+- **Never a second binding on the loopback app**, and never `RequireHost` to scope routes — it matches the attacker-written `Host` header. The peer app's route table holds `/pair/*` and `/commands/*` and nothing else.
+- **Trust is checked twice:** the handshake admits only SPKIs in the *current* `trustedPeers` (any key while a pairing window is open), and every non-pairing route re-checks the pin. Each must stay load-bearing under mutation: replace it with `true` and exactly its test fails.
+- **No LAN socket on a fresh install.** Nothing paired and no window open means nothing listens.
+- **Pin with the name discovery sanitized**, never a name from a pairing body; received file names go through `ReceivedFileName` and must land directly inside the download folder.
 
 ## AOT and trimming
 
@@ -134,5 +142,7 @@ Prefer behavior over implementation detail: do not assert on the `.tmp` filename
 - macOS was verified by hand on 2026-08-16 (Mac Mini, Apple Silicon, macOS 15.7.4): clean build, full test suite, trimmed single-file publish, `state.json` created `0600`, config loading, stable identity across restarts, and two-way discovery with Windows. `Environment.MachineName` returned a clean `Pips-Mac-mini` — the old claim that it yields `Something.local` was wrong.
 - **Denying the macOS Local Network permission did not stop discovery** on 15.7.4 — the daemon kept advertising *and* kept seeing peers with the permission explicitly off. The README's claim that discovery requires it is unverified. One machine, no reboot between toggling and testing, so this is an observation rather than proven causation.
 - macOS release binaries need an executable bit and a Gatekeeper story (codesign/notarize, or a documented `xattr` workaround). CI does not publish.
-- Discovery is verified between two daemons on one Windows machine, **not yet between two real machines**, and not at all on macOS by a human.
+- Discovery is verified between two real machines (Windows ↔ macOS, 2026-08-16). **Pairing and file transfer are not**: they were verified on 2026-10-09 only between two daemons on one Mac, with real mDNS and the published trimmed binary. The two-machine checklist is in `docs/Roadmap.md` M2/M3.
+- If the peer port cannot be bound at daemon start (port in use, Hyper-V excluded range), the daemon warns once and runs without receiving. Not surfaced in `lightdrop health` yet.
+- Windows shows a Defender Firewall prompt for the peer port; behaviour when it is denied is untested.
 - The mDNS library is a community fork of a project abandoned in 2019, and its `Common.Logging` dependency required a targeted trim suppression (`docs/DECISIONS.md` #16).

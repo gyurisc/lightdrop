@@ -25,20 +25,24 @@ Owns:
 - Kestrel hosting and endpoint mapping
 - **all file I/O** — `JsonConfigStore`, `JsonStateStore`, `LightDropDirectories`
 - platform-specific path resolution
-- networking implementations (as they arrive)
+- networking: mDNS, the pairing coordinator, the peer listener, the file sender and receiver
 
 The daemon also serves the page `lightdrop ui` opens: one `index.html` embedded in the assembly,
 plus an origin check that rejects non-GET requests which did not come from it. The page is a client
 of the same loopback HTTP the CLI uses — it adds no API of its own and no LAN-reachable surface.
+
+It hosts **two** `WebApplication`s: the loopback app (CLI, page) and, only once something is
+paired or a pairing window opens, the peer listener on the LAN. See *Pairing and transfer*.
 
 ### LightDrop.Core — platform independent
 
 No ASP.NET Core dependency. No filesystem access. No OS-specific APIs.
 
 Owns:
-- **wire contracts** (`HealthResponse`) — anything crossing a process or network boundary, so producer and consumer cannot drift
+- **wire contracts** (`HealthResponse`, pairing and transfer contracts) — anything crossing a process or network boundary, so producer and consumer cannot drift
 - **ports** — `IConfigStore`, `IStateStore`
-- **logic over those ports** — `DeviceIdentityProvider`, `HealthService`
+- **logic over those ports** — `DeviceIdentityProvider`, `HealthService`, `PairingService`
+- **pure rules** — the pairing session state machine, the pairing code, pin comparison, peer matching, received-file-name sanitizing
 - device identity rules, protocol/version constants
 
 The one concession: `DeviceIdentityProvider` reads `Environment.MachineName` for the default device name. That is a deterministic BCL read, not I/O, and tests assert against it directly.
@@ -78,6 +82,23 @@ library's internals or using real multicast. It is verified by hand; see `docs/R
 pairing must cross that boundary explicitly and under review rather than inherit a path that
 already exists. Adding a state-store reference to anything under `Discovery` should fail review.
 
+## Pairing and transfer
+
+Same split. **Core** holds the rules: `PairingSession` (states, deadlines on a `TimeProvider`,
+pin only when both said yes), `PairingCode`, `PinnedCertificate`, `PeerLookup`, and
+`ReceivedFileName`. **Daemon** holds the moving parts: `PairingCoordinator` (timers, the dial,
+calling `PairingService.PinAsync`), `PairingTls`, `PeerListener`, `FileSender`, `DownloadFolder`.
+Both coordinator and listener are concrete — one implementation each.
+
+The **peer listener** is a separate `WebApplication` on `0.0.0.0:<peerPort>` with mutual TLS. It
+is the only LAN socket, it does not exist on a fresh install, and its route table contains only
+`/pair/*` and `/commands/*` — the loopback app's routes and origin check are simply absent
+(`DECISIONS.md` #26). Trust is checked twice: at the handshake against the current `trustedPeers`,
+and per route, because a pairing window has to admit unknown keys at the handshake.
+
+`/commands/{name}` dispatches to `ICommandHandler`s registered as a DI collection; `SendFile` is
+the only one, and `HealthResponse.Capabilities` is projected from that set.
+
 ## Storage
 
 Both files live in `%APPDATA%\LightDrop` (Windows) or `~/Library/Application Support/LightDrop`
@@ -102,7 +123,7 @@ Writes go temp-file-then-rename (atomic on both NTFS and APFS), and `state.json`
 
 No `ConfigurationBuilder`, no `appsettings.json` — shipping a config file next to a portable binary contradicts both zero-config and single-executable, and `IConfiguration` has no clean write-back story for state.
 
-Defaults live in code. `IOptions<T>` is fed by hand. `LIGHTDROP_HOST` / `LIGHTDROP_PORT` exist as a development escape hatch, mainly so two daemons can run on one machine.
+Defaults live in code. `IOptions<T>` is fed by hand. `LIGHTDROP_HOST` / `LIGHTDROP_PORT` / `LIGHTDROP_PEER_PORT` / `LIGHTDROP_DATA_DIR` exist as development escape hatches, mainly so two daemons can run on one machine.
 
 ## Trimming and AOT
 
@@ -111,7 +132,7 @@ Defaults live in code. `IOptions<T>` is fed by hand. `LIGHTDROP_HOST` / `LIGHTDR
 - **`System.Text.Json` source generation** — every serializable type must be listed on `LightDropJsonContext`. A missing entry fails at runtime, not at build.
 - **`EnableRequestDelegateGenerator`** on the daemon — without it, `MapGet` reflects over the handler and trips IL2026/IL3050.
 
-Use `[LoggerMessage]` source-generated logging for the same reason. The payoff is real: 99 MB self-contained versus 18 MB trimmed, with zero trim warnings.
+Use `[LoggerMessage]` source-generated logging for the same reason. The payoff is real: 99 MB self-contained versus about 20 MB trimmed, with zero trim warnings.
 
 ## Testing
 

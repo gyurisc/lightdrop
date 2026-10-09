@@ -47,7 +47,7 @@ internal sealed class UiCommand(DaemonEndpointOptions endpoint) : ICliCommand
                 return 0;
             }
 
-            Console.WriteLine($"LightDrop is running at {endpoint.ClientAddress} — press Ctrl+C to stop.");
+            Console.WriteLine($"LightDrop is running at {endpoint.ClientAddress} - press Ctrl+C to stop.");
             OpenBrowser(endpoint.ClientAddress);
 
             // Closing the browser tab does not stop this. The daemon is the point of the process;

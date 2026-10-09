@@ -36,6 +36,8 @@ services.AddHttpClient();
 services.AddSingleton<ICliCommand, DaemonCommand>();
 services.AddSingleton<ICliCommand, HealthCommand>();
 services.AddSingleton<ICliCommand, PeersCommand>();
+services.AddSingleton<ICliCommand, PairCommand>();
+services.AddSingleton<ICliCommand, UnpairCommand>();
 services.AddSingleton<ICliCommand, UiCommand>();
 
 await using var provider = services.BuildServiceProvider();
@@ -94,5 +96,6 @@ static void PrintUsage(IEnumerable<ICliCommand> commands)
     Console.WriteLine("Environment:");
     Console.WriteLine($"  {DaemonEndpointOptions.HostEnvironmentVariable,-20}listen address (default {DaemonEndpointOptions.DefaultHost})");
     Console.WriteLine($"  {DaemonEndpointOptions.PortEnvironmentVariable,-20}listen port (default {DaemonEndpointOptions.DefaultPort})");
+    Console.WriteLine($"  {DaemonEndpointOptions.PeerPortEnvironmentVariable,-20}port paired devices connect to (default listen port + 1)");
     Console.WriteLine($"  {DaemonCommand.DataDirectoryEnvironmentVariable,-20}config and state location");
 }

@@ -94,7 +94,7 @@ public sealed class PairingService(IStateStore stateStore, TimeProvider timeProv
         {
             throw new InvalidOperationException(
                 $"'{deviceName}' is already paired with this device. Run `lightdrop unpair` first " +
-                "if you meant to replace its key — pairing again would otherwise overwrite the key " +
+                "if you meant to replace its key -- pairing again would otherwise overwrite the key " +
                 "silently.");
         }
 

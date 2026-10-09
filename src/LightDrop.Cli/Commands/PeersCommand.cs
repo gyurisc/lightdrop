@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using LightDrop.Core.Configuration;
@@ -7,11 +8,13 @@ using LightDrop.Core.Discovery;
 namespace LightDrop.Cli.Commands;
 
 /// <summary>
-/// <c>lightdrop peers</c> — lists nearby devices the local daemon has heard.
+/// <c>lightdrop peers</c> — lists nearby devices the local daemon has heard, or with
+/// <c>--trusted</c>, the devices this one is paired with.
 /// </summary>
 /// <remarks>
-/// These are strangers, not trusted devices. Nothing has been verified about any of them, and
-/// nothing can be sent to them yet.
+/// A discovered device is a stranger unless it is also paired; the PAIRED column says which. The
+/// mark comes from this device's own pins, joined by device id -- not from anything the other
+/// device announced.
 /// </remarks>
 internal sealed class PeersCommand(IHttpClientFactory httpClientFactory, DaemonEndpointOptions endpoint) : ICliCommand
 {
@@ -19,11 +22,20 @@ internal sealed class PeersCommand(IHttpClientFactory httpClientFactory, DaemonE
 
     public string Name => "peers";
 
-    public string Description => "List nearby devices discovered on the local network.";
+    public string Description => "List nearby devices; with --trusted, list paired devices.";
 
     public async Task<int> ExecuteAsync(string[] args, CancellationToken cancellationToken)
     {
         var address = endpoint.ClientAddress;
+
+        var trustedOnly = args.Any(arg => arg is "--trusted" or "-t");
+        var unknown = args.FirstOrDefault(arg => arg is not ("--trusted" or "-t"));
+        if (unknown is not null)
+        {
+            await Console.Error.WriteLineAsync($"Unknown option '{unknown}'. Usage: lightdrop peers [--trusted]")
+                .ConfigureAwait(false);
+            return 1;
+        }
 
         using var client = httpClientFactory.CreateClient();
         client.BaseAddress = address;
@@ -31,6 +43,14 @@ internal sealed class PeersCommand(IHttpClientFactory httpClientFactory, DaemonE
 
         try
         {
+            var trusted = await DaemonApi.GetTrustedAsync(client, cancellationToken).ConfigureAwait(false);
+
+            if (trustedOnly)
+            {
+                PrintTrusted(trusted);
+                return 0;
+            }
+
             var response = await client
                 .GetFromJsonAsync("api/peers", LightDropJsonContext.Default.PeerListResponse, cancellationToken)
                 .ConfigureAwait(false);
@@ -42,7 +62,7 @@ internal sealed class PeersCommand(IHttpClientFactory httpClientFactory, DaemonE
                 return 1;
             }
 
-            Print(response);
+            Print(response, trusted);
             return 0;
         }
         catch (HttpRequestException)
@@ -67,7 +87,7 @@ internal sealed class PeersCommand(IHttpClientFactory httpClientFactory, DaemonE
         }
     }
 
-    private static void Print(PeerListResponse response)
+    private static void Print(PeerListResponse response, IReadOnlyList<TrustedPeerSummary> trusted)
     {
         var state = PeerSearch.Classify(response, DateTimeOffset.UtcNow);
 
@@ -78,21 +98,49 @@ internal sealed class PeersCommand(IHttpClientFactory httpClientFactory, DaemonE
         }
 
         var peers = response.Peers;
+        var pairedIds = trusted.Select(peer => peer.DeviceId).ToHashSet(StringComparer.Ordinal);
 
         // Width is bounded because device names are truncated at ingestion.
         var nameWidth = Math.Max(6, peers.Max(peer => peer.DeviceName.Length));
 
-        Console.WriteLine($"{"DEVICE".PadRight(nameWidth)}  {"PLATFORM",-9}  {"PROTO",-5}  ID");
+        Console.WriteLine($"{"DEVICE".PadRight(nameWidth)}  {"PLATFORM",-9}  {"PROTO",-5}  {"ID",-8}  PAIRED");
 
         foreach (var peer in peers)
         {
-            var shortId = peer.DeviceId.Length > 8 ? peer.DeviceId[..8] : peer.DeviceId;
+            var paired = pairedIds.Contains(peer.DeviceId) ? "yes" : "";
             Console.WriteLine(
-                $"{peer.DeviceName.PadRight(nameWidth)}  {peer.Platform,-9}  {peer.ProtocolVersion,-5}  {shortId}");
+                $"{peer.DeviceName.PadRight(nameWidth)}  {peer.Platform,-9}  {peer.ProtocolVersion,-5}  {DaemonApi.ShortId(peer.DeviceId),-8}  {paired}");
+        }
+
+        var pairedCount = peers.Count(peer => pairedIds.Contains(peer.DeviceId));
+
+        Console.WriteLine();
+        Console.WriteLine(pairedCount == 0
+            ? $"{peers.Count} peer{(peers.Count == 1 ? "" : "s")} nearby. None are paired; pair one with 'lightdrop pair <device>'."
+            : $"{peers.Count} peer{(peers.Count == 1 ? "" : "s")} nearby, {pairedCount} paired.");
+    }
+
+    private static void PrintTrusted(IReadOnlyList<TrustedPeerSummary> trusted)
+    {
+        if (trusted.Count == 0)
+        {
+            Console.WriteLine("No paired devices. Pair one with 'lightdrop pair <device>'.");
+            return;
+        }
+
+        var nameWidth = Math.Max(6, trusted.Max(peer => peer.DeviceName.Length));
+
+        Console.WriteLine($"{"DEVICE".PadRight(nameWidth)}  {"ID",-8}  PAIRED ON");
+
+        foreach (var peer in trusted)
+        {
+            Console.WriteLine(
+                $"{peer.DeviceName.PadRight(nameWidth)}  {DaemonApi.ShortId(peer.DeviceId),-8}  " +
+                peer.PairedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
         }
 
         Console.WriteLine();
-        Console.WriteLine($"{peers.Count} peer{(peers.Count == 1 ? "" : "s")} nearby. None are paired or trusted.");
+        Console.WriteLine($"{trusted.Count} paired device{(trusted.Count == 1 ? "" : "s")}. Remove one with 'lightdrop unpair <device>'.");
     }
 
     /// <summary>

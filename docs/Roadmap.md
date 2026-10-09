@@ -89,36 +89,43 @@ a community fork of a project abandoned in 2019.
 - [x] **Pinned TLS handshake** — `72d01db`. `PinnedCertificate.Matches` plus `PairingTls`
       configuring both ends of a mutual-TLS connection. Verified by mutation five times: replacing
       a pin check with `true` must fail exactly the corresponding rejection test.
-- [ ] **The pairing window itself** — an ephemeral LAN listener, a 60-second timeout, roles
-      assigned by comparing device ids, and the session state machine. **This is the next slice.**
-- [ ] **A deferred-validation TLS mode.** `PairingTls` requires the peer's pinned key up front, so
-      it describes the connection *after* pairing. During the window neither side has that key yet
-      — the handshake is its only carrier — so pairing needs a second mode that accepts any
-      certificate, captures its SubjectPublicKeyInfo, and lets the session decide once the humans
-      have compared digits. See the `<remarks>` on `PairingTls`.
-- [ ] `lightdrop pair`, `lightdrop unpair`, `lightdrop peers --trusted`
+- [x] **The pairing window itself** — `161a022`, `dd2c7c2`, `7c2aeb6`. A pinned-only peer listener
+      (`DECISIONS.md` #26), 60-second deadlines, roles by device id, the session state machine in
+      Core, and a commit-then-reveal code (#27).
+- [x] **A deferred-validation TLS mode** — `dd2c7c2`. The listener admits any key only while a
+      window is open; the dialer captures the first key and pins it for the rest of the session.
+- [x] `lightdrop pair`, `lightdrop unpair`, `lightdrop peers --trusted` — `5f2e5c7`.
 - [ ] The pairing ceremony in the web UI (phase B of the companion UI)
 - [ ] Manual verification between two real machines, as with M1
 
-### Known traps for the next slice
+### Known traps
 
-- **The origin-check middleware is global.** It is hard-wired to the loopback authority, so every
-  inbound pairing POST on a LAN listener gets a silent 403. Do **not** fix this by exempting the
-  port: `LightDropDaemon.Create` builds one `WebApplication`, so one route table, and exempting the
-  port would expose `/health`, `/api/peers` and the UI page to any LAN caller during the window.
-  The listener needs its routing scoped — endpoint metadata, or its own `WebApplication`.
+- **The origin-check middleware is global** to the loopback app. Resolved by giving the peer
+  listener its own `WebApplication` (#26); do not "simplify" it into a second binding on the
+  loopback app, which would expose `/health`, `/api/*` and the UI to the LAN.
 - **macOS negotiates TLS 1.2**, not 1.3. The suite asserts a 1.2 floor rather than forcing 1.3,
   which would have broken the handshake on one of the two platforms this project targets.
 
-## M3 — File transfer
+## M3 — File transfer 🔨 first slice done
 
 **Goal:** `lightdrop send screenshot.png "Work Laptop"` works.
 
-- Command envelope and dispatcher, sized to what a real handler needs
-- `SendFile` with streamed payload — never buffer a whole file
-- Download folder resolution and collision handling
-- Progress reporting
-- Capabilities projected from registered handlers
+- [x] Command route and dispatcher, sized to one handler — `5af505e` (`DECISIONS.md` #28)
+- [x] `SendFile` with a streamed payload, never buffered — `5af505e`
+- [x] Download folder resolution and collision handling — `5af505e`
+- [x] Capabilities projected from registered handlers — `5af505e`
+- [x] Sender hardened against its receiver and the network: sanitized errors, no proxy, a bounded
+      dial (#29), exactly the declared length sent
+- [ ] Progress reporting (the CLI reports size, duration and throughput at the end only)
+- [ ] Manual verification between two real machines: pair, send both ways, a large file, Ctrl+C
+      mid-send, unpair then send. Windows will show a Defender Firewall prompt for the peer port.
+
+**Known gap:** if the peer port cannot be bound when the daemon starts with peers already paired
+(another process holds it, or it falls in a Hyper-V excluded range on Windows), the daemon logs one
+warning and runs without receiving. Senders then see "could not send … may be offline". This is
+deliberate today (`PeerListenerTests.ABindFailureOtherThanPortInUseIsReportedNotFatal`): the daemon
+stays useful for sending. Making it visible in `lightdrop health`, or fatal while peers are pinned,
+is open. When testing, watch the daemon's output for that warning.
 
 ## M4 — Persistent sessions
 

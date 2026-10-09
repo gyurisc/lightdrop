@@ -97,6 +97,8 @@ That argument is sound when handlers exist and **vacuous while the set is perman
 
 **The direction is unchanged** — LightDrop remains command-oriented. Only the unused implementation is gone.
 
+**Rebuilt at M3** (2026-10-09), sized to `SendFile` and nothing more — see #28.
+
 ---
 
 ### 12. `DeviceIdentityProvider` and `HealthService` are concrete classes
@@ -360,3 +362,40 @@ one-in-a-million. Costs one extra round trip (`/pair/reveal`) and the "same digi
 property, which was the vulnerability.
 
 **Not a protocol-version bump:** pairing had never shipped, so version 1 is defined as this.
+
+---
+
+### 28. The command scaffold, rebuilt for one handler — and who may call `/api/send`
+
+The scaffold #11 deleted, rebuilt for `SendFile` alone: `POST /commands/{name}` on the peer
+listener, metadata as base64url JSON in a `LightDrop-Metadata` header, the **body as the raw
+stream**. No envelope type, no envelope id, no separate byte channel: one request carries both,
+which is all a file needs, and nothing is ever base64-encoded or buffered. Handlers are a DI
+collection looked up by name; capabilities are projected from that set in one place
+(`CommandServices.AddCommandHandlers`), where a test adds a second handler to prove it.
+
+The pinned-peer check is a filter on the **whole `/commands` group**, so a handler added later
+cannot forget it, and the dispatcher refuses a request the filter did not vouch for — a missing
+filter fails closed instead of writing a stranger's file first. When a second handler wants a reply
+stream or a persistent session (M4), that is the moment to grow this, not before.
+
+**Accepted risk:** `/api/send` lets any process running as this user send any file this user can
+read to a device this user already paired. Browsers are kept out by the loopback origin check. The
+alternative — a secret the CLI presents — would live in a file that same process could read, so it
+would cost complexity and buy nothing. Revisit if LightDrop ever runs as a different user from the
+CLI calling it, or if a peer can be paired without both humans present.
+
+---
+
+### 29. Peer dials never use a proxy, and the dial is bounded
+
+`SocketsHttpHandler` obeys the system proxy, PAC files and `HTTPS_PROXY` by default, and Windows'
+"bypass for local addresses" covers dotless names only, not `192.168.x.y`. A peer dialed through a
+proxy becomes a `CONNECT` to a third party: usually a failed send blamed on the peer, otherwise a
+LAN transfer relayed off the LAN. Every handler `PairingTls` builds sets `UseProxy = false`.
+
+The same handlers bound **connect plus TLS handshake at 10 seconds**, and nothing else. A peer that
+slept or left Wi-Fi stays in the registry for up to 180 s, and a firewall dropping the port answers
+nothing, so without it `lightdrop send` sat silent for the OS connect timeout (75 s on macOS) — or
+for ever against something that accepts TCP and never speaks TLS. The transfer itself keeps no
+timeout, because a multi-gigabyte file legitimately takes minutes; Ctrl+C is the bound.

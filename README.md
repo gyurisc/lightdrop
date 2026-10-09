@@ -27,17 +27,23 @@ LightDrop makes nearby devices feel like they're part of the same workstation.
 
 ## Status
 
-**Early development.** Devices discover each other on the local network. Nothing is transferred
-yet, and no peer is trusted. See `docs/Roadmap.md` for what lands when.
+**Early development, ready to try between two machines.** Devices discover each other on the
+local network, pair once by comparing a six-digit code, and then send files to each other. Not yet
+verified between two real machines; see `docs/Roadmap.md`.
 
 ```bash
-lightdrop daemon   # run the daemon
-lightdrop health   # ask it who it is
-lightdrop peers    # list nearby devices
+lightdrop daemon                     # run the daemon (on both machines)
+lightdrop health                     # ask it who it is
+lightdrop peers                      # list nearby devices
+lightdrop pair "Mac Mini"            # on both machines within a minute; compare the codes
+lightdrop peers --trusted            # list paired devices
+lightdrop send report.pdf "Mac Mini" # lands in the other machine's Downloads folder
+lightdrop unpair "Mac Mini"
 ```
 
 Discovered peers are **nearby strangers**: presence, not trust. Nothing is sent to them and nothing
-is stored about them. Pairing comes next.
+is stored about them until both users pair. Received files go to `downloadFolder` in `config.json`,
+else `~/Downloads`, and never overwrite: a second `report.pdf` arrives as `report (1).pdf`.
 
 On first run, macOS asks for Local Network permission and Windows may show a Defender Firewall
 prompt. Allow both. (On macOS 15.7.4 discovery kept working even with the permission denied, so
@@ -104,14 +110,16 @@ could not listen; pick another port with `LIGHTDROP_PEER_PORT` on that machine
 
 Discovery can be exercised without a second computer, but each daemon needs its **own port and its
 own data directory**. Sharing `state.json` would give both the same device id, and each would
-dismiss the other's announcements as its own.
+dismiss the other's announcements as its own. Space the ports two apart: each daemon also takes
+port + 1 for its peer listener. To send between them, give each a `config.json` with its own
+`downloadFolder`, or both will receive into `~/Downloads`.
 
 ```bash
 # terminal 1
 LIGHTDROP_PORT=5533 LIGHTDROP_DATA_DIR=/tmp/ld-a dotnet run --project src/LightDrop.Cli -- daemon
 
 # terminal 2
-LIGHTDROP_PORT=5534 LIGHTDROP_DATA_DIR=/tmp/ld-b dotnet run --project src/LightDrop.Cli -- daemon
+LIGHTDROP_PORT=5535 LIGHTDROP_DATA_DIR=/tmp/ld-b dotnet run --project src/LightDrop.Cli -- daemon
 
 # terminal 3
 LIGHTDROP_PORT=5533 dotnet run --project src/LightDrop.Cli -- peers
@@ -120,7 +128,7 @@ LIGHTDROP_PORT=5533 dotnet run --project src/LightDrop.Cli -- peers
 On PowerShell, set the variables first — the inline `VAR=value cmd` form is Bash only:
 
 ```powershell
-$env:LIGHTDROP_PORT = "5534"
+$env:LIGHTDROP_PORT = "5535"
 $env:LIGHTDROP_DATA_DIR = "$env:TEMP\ld-b"
 dotnet run --project src/LightDrop.Cli -- daemon
 ```

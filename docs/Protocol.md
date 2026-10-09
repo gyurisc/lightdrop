@@ -1,6 +1,6 @@
 # LightDrop Protocol
 
-Status: **v1 in progress.** Only `/health` is implemented. Everything under "Direction" is intent, not contract.
+Status: **v1 in progress.** Implemented: `/health`, discovery, pairing, and one command, `SendFile`. Everything under "Direction" is intent, not contract.
 
 ## Versioning
 
@@ -22,7 +22,7 @@ Liveness, identity, and everything a peer needs before it can talk to this devic
   "deviceId": "ae471fdc0c004589b6ab810fcf6c9324",
   "deviceName": "Work Laptop",
   "platform": "windows",
-  "capabilities": []
+  "capabilities": ["SendFile"]
 }
 ```
 
@@ -33,13 +33,13 @@ Liveness, identity, and everything a peer needs before it can talk to this devic
 | `deviceId` | Generated once, persisted, never changes without an explicit reset. Trust pins to this. |
 | `deviceName` | Human-readable. How the CLI addresses peers. |
 | `platform` | `windows` \| `macos` \| `linux` \| `unknown`. A short stable token, not `RuntimeInformation.OSDescription`. |
-| `capabilities` | Commands this device accepts. Empty until file transfer lands. |
+| `capabilities` | Commands this device accepts, projected from its registered handlers. Also the TXT `cap` key. |
 
 Health stays a **plain HTTP GET**, not a command. It is the bootstrap probe: it must answer before any socket, pairing, or negotiation exists, and it keeps the daemon debuggable with `curl`.
 
 JSON is camelCase, serialized through a source-generated context.
 
-## Direction: commands, not endpoints
+## Commands, not endpoints
 
 The mental model:
 
@@ -50,16 +50,62 @@ Peer B executes the capability
 Peer B returns a Result
 ```
 
-New features become **registered handlers, not new endpoints**. `POST /clipboard`, `POST /notification` and friends would each add client code, error handling, and versioning surface. One envelope gives one transport, one dispatch table, one trust check.
+New features become **registered handlers, not new endpoints**. `POST /clipboard`, `POST /notification` and friends would each add client code, error handling, and versioning surface. One route gives one transport, one dispatch table, one trust check.
 
-Anticipated commands: `Ping`, `GetCapabilities`, `SendFile`, `SendClipboardText`, `SendClipboardImage`, `SendScreenshot`, `ShowNotification`, `OpenUrl`.
+Anticipated commands: `Ping`, `GetCapabilities`, `SendClipboardText`, `SendClipboardImage`, `SendScreenshot`, `ShowNotification`, `OpenUrl`.
 
-Two rules that must survive implementation:
+Two rules that hold now and must survive the next handler:
 
-1. **Capabilities are derived from the registered handler set**, never hand-maintained. A hardcoded list drifts from reality the first time someone adds a handler and forgets it.
-2. **The envelope carries metadata only.** File bytes stream on a separate channel keyed by the envelope id. Base64-in-JSON costs ~33% overhead and forces whole-payload buffering, which the product explicitly rules out.
+1. **Capabilities are derived from the registered handler set**, never hand-maintained (`CommandServices.AddCommandHandlers`). A hardcoded list drifts from reality the first time someone adds a handler and forgets it.
+2. **Metadata travels apart from the bytes.** No base64-in-JSON (~33% overhead and whole-payload buffering, which the product rules out).
 
-**The command scaffold is not built yet, on purpose.** An earlier draft existed with zero handlers and was deleted: its shape had been validated by nothing, and streaming requirements are likely to reshape it. It will be rebuilt at the file-transfer milestone, sized to what a real handler needs.
+### Implemented: `POST /commands/{name}`
+
+Sized to one handler (`DECISIONS.md` #28), on the **peer listener** only:
+
+- **Trust:** the TLS handshake admits pinned keys (or, during a pairing window, anyone), and the
+  whole `/commands` group sits behind a second, application-layer pin check — a caller whose key
+  is not pinned gets `403`. The dispatcher refuses again if that check is ever missing.
+- **Metadata** is JSON, base64url-encoded, in one `LightDrop-Metadata` request header (at most
+  8 KB encoded). Two values are refused.
+- **The body is the payload's raw bytes**, streamed. The listener caps every body at 4 KB; a
+  handler that needs more raises the cap for its own request.
+- An unknown command is `404`.
+
+### `SendFile`
+
+| | |
+|---|---|
+| Metadata | `{"fileName": "report.pdf", "length": 12345}` |
+| Body | the file's bytes; `Content-Length` **required** (`411` without) and equal to `length` (`400` otherwise) |
+| Answer | `200 {"savedAs": "report (1).pdf"}` — a file name only, never the receiver's path |
+| Refusals | `400 {"error": "…"}` for bad metadata or a name that is empty once made safe |
+
+The receiver treats a paired sender as careful about nothing:
+
+- **The name is sanitized** (`ReceivedFileName`): last segment after both `/` and `\`, control and
+  bidi characters stripped, `<>:"/\|?*` replaced, trailing dots and spaces trimmed, Windows
+  reserved names prefixed, length capped keeping the extension. The final path must then sit
+  directly inside the download folder, or nothing is written.
+- **The download folder** is `downloadFolder` from `config.json`, else `~/Downloads`; created if
+  missing.
+- **Never half a file, never an overwrite.** The body streams to a hidden temp file in the folder,
+  then moves over an atomically reserved `name (n).ext`. An aborted or short body leaves nothing.
+
+The sender treats a paired receiver the same way: `savedAs`, refusals and even the HTTP stack's
+error text about a malformed answer are sanitized before they reach a log or a terminal. It dials
+the address discovery has for the pinned id, never through a proxy, with a 10-second bound on
+connect plus handshake and no bound on the transfer. It sends exactly the `length` it declared,
+even if the file grows meanwhile.
+
+### Loopback: `POST /api/send`
+
+`{"path": "/abs/path/file", "peer": "mac mini"}` → `200 {"savedAs", "length", "peerDeviceId", "peerName"}`.
+`peer` matches a **paired** device by name or id prefix; the address comes from discovery by id.
+Errors are `{"error"}`: `400` bad path or ambiguous peer, `404` not paired, `409` paired but not
+discovered, `502` the peer could not be reached or refused. Held open for the whole transfer;
+closing it cancels the upload. Behind the origin check, so a web page cannot call it — any process
+of the same user can (`DECISIONS.md` #28).
 
 ## Direction: transport
 
@@ -169,7 +215,7 @@ discovery alongside the list, because an empty list on its own is ambiguous:
   "peers": [
     {
       "deviceId": "…", "deviceName": "Work Laptop", "platform": "windows",
-      "protocolVersion": 1, "capabilities": [], "port": 5533,
+      "protocolVersion": 1, "capabilities": ["SendFile"], "port": 5534,
       "address": "192.168.0.222", "lastSeen": "…"
     }
   ]

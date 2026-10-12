@@ -40,6 +40,7 @@ services.AddSingleton<ICliCommand, PairCommand>();
 services.AddSingleton<ICliCommand, UnpairCommand>();
 services.AddSingleton<ICliCommand, SendCommand>();
 services.AddSingleton<ICliCommand, UiCommand>();
+services.AddSingleton<ICliCommand, AutostartCommand>();
 
 await using var provider = services.BuildServiceProvider();
 

@@ -179,7 +179,7 @@ Must solve head-of-line blocking — a large transfer cannot stall small command
 
 ## Later
 
-Clipboard text, clipboard images, screenshots, `ShowNotification`, `OpenUrl`, Explorer/Finder integration, Claude Code image handoff, agent-to-agent communication.
+`lightdrop autostart` on Windows without a console window (`DECISIONS.md` #33). Clipboard text, clipboard images, screenshots, `ShowNotification`, `OpenUrl`, Explorer/Finder integration, Claude Code image handoff, agent-to-agent communication.
 
 ## Not doing
 

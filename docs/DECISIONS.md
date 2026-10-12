@@ -449,3 +449,26 @@ refresh caches). One query and two announcement packets a minute per daemon is n
 home LAN.
 **Not done:** a manual `peer add <address>` fallback for networks that drop multicast in *both*
 directions. Add it when such a network shows up.
+
+---
+
+### 33. `lightdrop autostart` is a LaunchAgent, opt-in, and macOS-only for now
+
+Asked for after the first two-machine test: a Mac should receive files without a terminal left
+open. `autostart on` writes `~/Library/LaunchAgents/com.lightdrop.daemon.plist` for the binary it
+was run from and loads it with `launchctl bootstrap gui/<uid>`; `off` boots it out and deletes it.
+A LaunchAgent, not a LaunchDaemon: it runs as the user whose Downloads, Application Support and
+Local Network permission LightDrop uses, and needs no admin rights. It stays compatible with "no
+installation" because nothing is registered unless the user asks, and `off` removes all of it.
+
+`KeepAlive` is `SuccessfulExit = false`: restart after a crash or a failed bind, never after a clean
+stop. A daemon already running in a terminal makes the background one fail its bind and retry every
+ten seconds (launchd's throttle) until it can take over — a few log lines, accepted. The log file
+(`~/Library/Logs/lightdrop.log`) is not rotated.
+
+**Windows is deferred, not forgotten.** The Run key and Task Scheduler both start
+`lightdrop.exe daemon` in a visible console window at every logon, because it is a console-subsystem
+program. Fixing that properly means the daemon detaching from or never creating a console, and
+writing its log somewhere — its own piece of work, and untestable here without a Windows machine.
+Until then the command says so and points at Task Scheduler.
+

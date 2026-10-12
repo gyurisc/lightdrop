@@ -29,8 +29,9 @@ LightDrop makes nearby devices feel like they're part of the same workstation.
 
 **Early development, ready to try between two machines.** Devices discover each other on the
 local network, pair once by comparing a six-digit code, and then send files to each other.
-Discovery is verified between Windows and macOS; pairing and transfer so far only between two
-daemons on one Mac (`docs/Roadmap.md` M2). Clipboard, screenshots and live progress are not built.
+Discovery is verified between Windows and macOS; pairing and transfer between two Macs, not yet
+with Windows at either end (`docs/Roadmap.md` M2/M3). Clipboard, screenshots and live progress are
+not built.
 
 ```bash
 lightdrop daemon                     # run the daemon (on both machines)
@@ -40,6 +41,7 @@ lightdrop pair "Mac Mini"            # on both machines within a minute; compare
 lightdrop peers --trusted            # list paired devices
 lightdrop send report.pdf "Mac Mini" # lands in the other machine's Downloads folder
 lightdrop unpair "Mac Mini"
+lightdrop autostart on               # macOS: run the daemon at login, no terminal needed
 ```
 
 Discovered peers are **nearby strangers**: presence, not trust. Nothing is sent to them and nothing
@@ -208,6 +210,24 @@ If a daemon is already running it opens the page against that one and exits.
 ```
 
 Neither installs anything. They point at the executable wherever you already keep it.
+
+### Starting at login (macOS)
+
+```bash
+lightdrop autostart on     # run 'lightdrop daemon' at every login, and now
+lightdrop autostart        # is it on, which binary, is it running
+lightdrop autostart off    # stop it and remove it
+```
+
+`on` registers the binary you ran it from as a per-user LaunchAgent
+(`~/Library/LaunchAgents/com.lightdrop.daemon.plist`), so publish to a folder that stays put first.
+Output goes to `~/Library/Logs/lightdrop.log`. launchd restarts the daemon if it crashes, not after
+a clean stop; if a daemon is already running in a terminal, the background one takes over within
+about ten seconds of that one stopping. macOS shows a "Background Items Added" notice, and the
+item appears under System Settings > General > Login Items.
+
+Not on Windows yet: `lightdrop.exe` is a console program, so the usual logon hooks would open a
+console window at every login (`docs/DECISIONS.md` #33).
 
 ## Goals
 

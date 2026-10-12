@@ -472,3 +472,26 @@ program. Fixing that properly means the daemon detaching from or never creating 
 writing its log somewhere — its own piece of work, and untestable here without a Windows machine.
 Until then the command says so and points at Task Scheduler.
 
+---
+
+### 34. Discovery reopens its sockets when it stops hearing itself
+
+Found right after #33: the Mini's first launchd-started daemon heard nothing for 12 minutes, while
+the same binary started from a shell heard the Air at once, and a restart fixed it. Most likely its
+sockets opened before macOS granted the Local Network permission and stayed blocked. The same
+silent deafness follows a network change on macOS, which the mDNS library does not watch for.
+
+The heartbeat is the daemon's own announcement: multicast loops back, so a working transport hears
+itself within milliseconds of each per-minute announcement (#32). `DiscoveryWatchdog` (Core, tested
+with a fake clock) calls it deaf after 150 s of silence — two announcements missed — and the
+transport closes and reopens its sockets without a goodbye, since the device is not leaving.
+Peers are no signal: a daemon alone on the network hears none and is not broken.
+
+Verified on the Mini (2026-10-12) with two probe daemons: the real build ran four minutes without
+once calling itself deaf; a variant that ignored its own echo rebuilt at the third refresh with its
+socket and file counts flat. **Not verified:** that a rebuild actually cures the permission case,
+which could not be reproduced on demand — if macOS also blocks a daemon's own loopback, the
+watchdog sees nothing wrong and the README's restart advice still applies.
+
+**Cost:** a machine with no network at all rebuilds its sockets every 150 s, quietly (Debug).
+

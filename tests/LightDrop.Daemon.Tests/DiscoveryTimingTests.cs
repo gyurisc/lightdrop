@@ -19,4 +19,11 @@ public sealed class DiscoveryTimingTests
     {
         Assert.True(MdnsPeerDiscoveryTransport.RefreshInterval * 3 <= PeerRegistry.StaleAfter);
     }
+
+    [Fact]
+    public void AHealthyTransportIsNeverCalledDeafBetweenTwoAnnouncements()
+    {
+        // It hears itself once per refresh; the watchdog must allow at least two missed in a row.
+        Assert.True(MdnsPeerDiscoveryTransport.DeafAfter >= MdnsPeerDiscoveryTransport.RefreshInterval * 2);
+    }
 }

@@ -42,11 +42,22 @@ public sealed class MdnsPeerDiscoveryTransport(
     /// </remarks>
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long without hearing its own announcement before discovery reopens its sockets.</summary>
+    /// <remarks>
+    /// Two and a half refresh intervals: two announcements missed, acted on at the third refresh.
+    /// See <see cref="DiscoveryWatchdog"/>.
+    /// </remarks>
+    public static readonly TimeSpan DeafAfter = RefreshInterval * 2.5;
+
+    // Guards swapping the sockets out (a rebuild on the timer thread) against stopping.
+    private readonly Lock _gate = new();
     private MulticastService? _mdns;
     private ServiceDiscovery? _discovery;
     private ServiceProfile? _profile;
+    private DiscoveryWatchdog? _watchdog;
     private ITimer? _refresh;
     private string? _localDeviceId;
+    private bool _stopped;
 
     public event Action<PeerAnnouncement>? PeerAnnounced;
 
@@ -57,17 +68,6 @@ public sealed class MdnsPeerDiscoveryTransport(
         ArgumentNullException.ThrowIfNull(identity);
 
         _localDeviceId = identity.Id;
-
-        var mdns = new MulticastService(UsableNetworkInterfaces.Filter)
-        {
-            // IPv4 only this milestone: it avoids link-local scope handling that differs between
-            // Windows and macOS, and adding IPv6 later needs no protocol change.
-            UseIpv4 = true,
-            UseIpv6 = false,
-            IgnoreDuplicateMessages = true,
-        };
-
-        var discovery = new ServiceDiscovery(mdns);
 
         // The instance name is the device identifier, not the device name. Two machines can
         // legitimately share a name, and an identifier collision is not a realistic event — which
@@ -86,13 +86,42 @@ public sealed class MdnsPeerDiscoveryTransport(
             profile.AddProperty(key, value);
         }
 
+        _profile = profile;
+        _watchdog = new DiscoveryWatchdog(TimeProvider.System, DeafAfter);
+
+        lock (_gate)
+        {
+            OpenSockets(profile);
+        }
+
+        // Due immediately, so peers hear the first announcement without waiting a full interval.
+        _refresh = TimeProvider.System.CreateTimer(_ => Refresh(), state: null, TimeSpan.Zero, RefreshInterval);
+
+        DiscoveryLog.Started(logger, ServiceName, servicePort);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Opens the multicast sockets and starts answering for <paramref name="profile"/>.</summary>
+    /// <remarks>Callers hold <see cref="_gate"/>.</remarks>
+    private void OpenSockets(ServiceProfile profile)
+    {
+        var mdns = new MulticastService(UsableNetworkInterfaces.Filter)
+        {
+            // IPv4 only this milestone: it avoids link-local scope handling that differs between
+            // Windows and macOS, and adding IPv6 later needs no protocol change.
+            UseIpv4 = true,
+            UseIpv6 = false,
+            IgnoreDuplicateMessages = true,
+        };
+
+        var discovery = new ServiceDiscovery(mdns);
+
         // Held before anything can throw. Advertise and Start below fail on exactly the paths this
         // milestone expects — a blocked firewall, a denied macOS Local Network permission — and if
         // the fields were assigned only afterwards, DisposeAsync would see nulls and leak whatever
         // sockets these had already opened.
         _mdns = mdns;
         _discovery = discovery;
-        _profile = profile;
 
         discovery.ServiceInstanceDiscovered += OnServiceInstanceDiscovered;
         discovery.ServiceInstanceShutdown += OnServiceInstanceShutdown;
@@ -103,25 +132,82 @@ public sealed class MdnsPeerDiscoveryTransport(
 
         discovery.Advertise(profile);
         mdns.Start();
-
-        // Due immediately, so peers hear the first announcement without waiting a full interval.
-        _refresh = TimeProvider.System.CreateTimer(
-            _ => Refresh(discovery, profile), state: null, TimeSpan.Zero, RefreshInterval);
-
-        DiscoveryLog.Started(logger, ServiceName, servicePort);
-        return Task.CompletedTask;
     }
 
-    /// <summary>Asks for peers, then announces this device.</summary>
-    /// <remarks>
-    /// Both halves are needed on a network that carries multicast in one direction only. Seen
-    /// 2026-10-12: a router delivered a Wi-Fi MacBook Air's multicast to an Ethernet Mac Mini but
-    /// none of the Mini's to the Air, while unicast worked both ways. The Air learns of the Mini
-    /// from the Mini's unicast answer to the Air's QU question (<see cref="Query"/>); the Mini, whose
-    /// questions never reach the Air, learns of the Air from the Air's multicast announcement.
-    /// </remarks>
-    private void Refresh(ServiceDiscovery discovery, ServiceProfile profile)
+    /// <summary>Closes the sockets without a goodbye: the device is not leaving.</summary>
+    /// <remarks>Callers hold <see cref="_gate"/>.</remarks>
+    private void CloseSockets()
     {
+        try
+        {
+            _discovery?.Dispose();
+            _mdns?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            DiscoveryLog.StopFailed(logger, ex);
+        }
+
+        _discovery = null;
+        _mdns = null;
+    }
+
+    /// <summary>Reopens deaf sockets, asks for peers, then announces this device.</summary>
+    /// <remarks>
+    /// Asking and announcing are both needed on a network that carries multicast in one direction
+    /// only. Seen 2026-10-12: a router delivered a Wi-Fi MacBook Air's multicast to an Ethernet Mac
+    /// Mini but none of the Mini's to the Air, while unicast worked both ways. The Air learns of the
+    /// Mini from the Mini's unicast answer to the Air's QU question (<see cref="Query"/>); the Mini,
+    /// whose questions never reach the Air, learns of the Air from the Air's multicast announcement.
+    /// The announcement is also the watchdog's heartbeat: this device should hear it come back.
+    /// </remarks>
+    private void Refresh()
+    {
+        ServiceDiscovery? discovery;
+        ServiceProfile? profile;
+
+        lock (_gate)
+        {
+            if (_stopped || _profile is null || _watchdog is null)
+            {
+                return;
+            }
+
+            var health = _watchdog.Check();
+            if (health != DiscoveryHealth.Healthy)
+            {
+                if (health == DiscoveryHealth.WentDeaf)
+                {
+                    DiscoveryLog.WentDeaf(logger, (int)DeafAfter.TotalSeconds);
+                }
+                else
+                {
+                    DiscoveryLog.StillDeaf(logger);
+                }
+
+                CloseSockets();
+
+                try
+                {
+                    OpenSockets(_profile);
+                }
+                catch (Exception ex)
+                {
+                    // Tried again at the next refresh, once the watchdog's window has passed.
+                    DiscoveryLog.ReopenFailed(logger, ex);
+                    return;
+                }
+            }
+
+            discovery = _discovery;
+            profile = _profile;
+        }
+
+        if (discovery is null)
+        {
+            return;
+        }
+
         Query(discovery);
 
         try
@@ -160,32 +246,37 @@ public sealed class MdnsPeerDiscoveryTransport(
     {
         if (_refresh is not null)
         {
-            // Waits out a callback in flight, so no announcement can follow the goodbye below and
-            // list this device again on its peers until it ages out.
+            // Waits out a callback in flight, so no announcement or rebuild can follow the goodbye
+            // below and list this device again on its peers until it ages out.
             await _refresh.DisposeAsync().ConfigureAwait(false);
         }
 
-        if (_discovery is not null && _profile is not null)
+        lock (_gate)
         {
+            _stopped = true;
+
+            if (_discovery is not null && _profile is not null)
+            {
+                try
+                {
+                    // Goodbye: peers drop this device immediately rather than waiting out the
+                    // staleness window.
+                    _discovery.Unadvertise(_profile);
+                }
+                catch (Exception ex)
+                {
+                    DiscoveryLog.GoodbyeFailed(logger, ex);
+                }
+            }
+
             try
             {
-                // Goodbye: peers drop this device immediately rather than waiting out the
-                // staleness window.
-                _discovery.Unadvertise(_profile);
+                _mdns?.Stop();
             }
             catch (Exception ex)
             {
-                DiscoveryLog.GoodbyeFailed(logger, ex);
+                DiscoveryLog.StopFailed(logger, ex);
             }
-        }
-
-        try
-        {
-            _mdns?.Stop();
-        }
-        catch (Exception ex)
-        {
-            DiscoveryLog.StopFailed(logger, ex);
         }
 
         DiscoveryLog.Stopped(logger);
@@ -222,6 +313,18 @@ public sealed class MdnsPeerDiscoveryTransport(
         {
             if (!e.ServiceInstanceName.IsSubdomainOf(ServiceDomain))
             {
+                return;
+            }
+
+            // Our own announcement, looped back: the watchdog's proof that the sockets work. The
+            // registry would discard it anyway.
+            if (IsThisDevice(e.ServiceInstanceName))
+            {
+                if (_watchdog?.HeardSelf() == true)
+                {
+                    DiscoveryLog.Recovered(logger);
+                }
+
                 return;
             }
 
@@ -263,10 +366,9 @@ public sealed class MdnsPeerDiscoveryTransport(
                 return;
             }
 
-            // The instance label is the peer's device identifier, by construction above.
-            var deviceId = e.ServiceInstanceName.Labels.Count > 0 ? e.ServiceInstanceName.Labels[0] : null;
+            var deviceId = DeviceIdOf(e.ServiceInstanceName);
 
-            if (!string.IsNullOrEmpty(deviceId) && !string.Equals(deviceId, _localDeviceId, StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(deviceId) && !IsThisDevice(e.ServiceInstanceName))
             {
                 PeerGone?.Invoke(deviceId);
             }
@@ -277,11 +379,24 @@ public sealed class MdnsPeerDiscoveryTransport(
         }
     }
 
+    /// <summary>The instance label: a peer's device identifier, by construction in StartAsync.</summary>
+    private static string? DeviceIdOf(DomainName instance) =>
+        instance.Labels.Count > 0 ? instance.Labels[0] : null;
+
+    private bool IsThisDevice(DomainName instance) =>
+        string.Equals(DeviceIdOf(instance), _localDeviceId, StringComparison.Ordinal);
+
     public ValueTask DisposeAsync()
     {
         _refresh?.Dispose();
-        _discovery?.Dispose();
-        _mdns?.Dispose();
+
+        lock (_gate)
+        {
+            // Also stops a rebuild already waiting for the lock from opening fresh sockets.
+            _stopped = true;
+            CloseSockets();
+        }
+
         return ValueTask.CompletedTask;
     }
 }

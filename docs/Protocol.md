@@ -242,6 +242,10 @@ the laptop from its announcements. A unicast answer comes from the responder's e
 5353, which RFC 6762 says to ignore; LightDrop's library accepts it, and only LightDrop answers this
 service type.
 
+A daemon hears its own announcements (multicast loops back). If it has not heard one for **150
+seconds**, its sockets are presumed dead — a permission granted after they opened, a network change
+— and it closes and reopens them without a goodbye.
+
 Peers expire after **180 seconds** without being heard from — three times the refresh interval,
 deliberately independent of the DNS TTL. The standard 75-minute PTR TTL would leave a
 sleeping laptop listed for an hour, and a device that sleeps or drops off Wi-Fi never sends a

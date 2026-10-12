@@ -35,6 +35,24 @@ internal static partial class DiscoveryLog
     public static partial void AnnounceFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(
+        EventId = 210,
+        Level = LogLevel.Information,
+        Message = "Discovery has not heard even its own announcement for {Seconds} seconds; reopening its sockets.")]
+    public static partial void WentDeaf(ILogger logger, int seconds);
+
+    [LoggerMessage(EventId = 211, Level = LogLevel.Debug, Message = "Discovery is still deaf; reopening its sockets again.")]
+    public static partial void StillDeaf(ILogger logger);
+
+    [LoggerMessage(EventId = 212, Level = LogLevel.Information, Message = "Discovery hears the network again.")]
+    public static partial void Recovered(ILogger logger);
+
+    [LoggerMessage(
+        EventId = 213,
+        Level = LogLevel.Warning,
+        Message = "Reopening discovery's sockets failed; it tries again within a few minutes.")]
+    public static partial void ReopenFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(
         EventId = 204,
         Level = LogLevel.Warning,
         Message = "Could not announce goodbye; peers will age this device out instead.")]

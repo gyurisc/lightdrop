@@ -120,13 +120,18 @@ except the network between two machines.
 
 ### Manual verification between two real machines
 
-Not done. Each needs a clean `state.json` the first time, and a `downloadFolder` worth checking.
+Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and a MacBook Air M3
+(Wi-Fi only, `dotnet run`), both macOS, both with the macOS firewall on, home router.
 
-- [ ] Both machines discover each other (`lightdrop peers`), as in M1
-- [ ] `lightdrop pair` on both within a minute: same code on both screens, both pinned
+- [x] Both machines discover each other (`lightdrop peers`), as in M1 — **only after `60e6a56`.**
+      The router carried the Air's multicast to the Mini but none of the Mini's to the Air, and the
+      daemon never re-asked, so peers also vanished after three minutes. Fixed by a per-minute
+      unicast-answer query plus re-announcement (`DECISIONS.md` #32)
+- [x] `lightdrop pair` on both within a minute: same code on both screens (`606 896`), both pinned
 - [ ] Windows: the Defender Firewall prompt appears for the peer port; allowed → pairing works;
       **denied** → what the user sees
-- [ ] macOS: a Local Network or firewall prompt for the incoming peer port, if any
+- [x] macOS: the **firewall** (when on) asks whether `lightdrop` may accept incoming connections;
+      allowed → works. Under `dotnet run` it asks again after every rebuild. Denied: untested
 - [ ] Answering `n` on one side: nothing pinned on either
 - [ ] Ctrl+C during `pair` on one side: the other times out cleanly, nothing pinned
 - [ ] Restart both daemons: still paired, peer listener up at start
@@ -151,8 +156,9 @@ Not done. Each needs a clean `state.json` the first time, and a `downloadFolder`
       dial (#29), exactly the declared length sent
 - [ ] Progress reporting (the CLI reports size, duration and throughput at the end only)
 - [ ] Manual verification between two real machines (one-Mac smoke test passed, see M2):
-  - [ ] send a small and a multi-GB file both ways; checksums match; throughput is reasonable over
-        Wi-Fi and Ethernet
+  - [x] 100 MB both ways, SHA-256 identical (2026-10-12); Mini (Ethernet) → Air (Wi-Fi) at
+        13.1 MB/s
+  - [ ] a multi-GB file; a small file; Wi-Fi ↔ Wi-Fi throughput
   - [ ] Ctrl+C mid-send: nothing appears under the final name on the receiver
   - [ ] unpair on the receiver, then send: refused
   - [ ] a peer that went to sleep: `send` fails within ~10 s, not 75

@@ -226,6 +226,12 @@ a clean stop; if a daemon is already running in a terminal, the background one t
 about ten seconds of that one stopping. macOS shows a "Background Items Added" notice, and the
 item appears under System Settings > General > Login Items.
 
+Started by launchd, the daemon needs **its own** Local Network permission; from a terminal it
+borrowed Terminal's. If `lightdrop peers` stays empty after `autostart on`, check that `lightdrop`
+is allowed under System Settings > Privacy & Security > Local Network, then restart it with
+`lightdrop autostart on`: a daemon that started before the permission existed stays deaf until it
+restarts.
+
 Not on Windows yet: `lightdrop.exe` is a console program, so the usual logon hooks would open a
 console window at every login (`docs/DECISIONS.md` #33).
 

@@ -82,6 +82,29 @@ public sealed class PeerRegistryTests
     }
 
     [Fact]
+    public void AReAnnouncementIsNotANewSighting()
+    {
+        // The daemon logs "Peer appeared" for every true, and peers re-announce every minute.
+        var (registry, clock) = Create();
+        registry.Observe(Announcement("peer-1"));
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+
+        Assert.False(registry.Observe(Announcement("peer-1")));
+    }
+
+    [Fact]
+    public void APeerHeardAgainAfterGoingStaleIsANewSighting()
+    {
+        var (registry, clock) = Create();
+        registry.Observe(Announcement("peer-1"));
+
+        clock.Advance(PeerRegistry.StaleAfter);
+
+        Assert.True(registry.Observe(Announcement("peer-1")));
+    }
+
+    [Fact]
     public void IgnoresItsOwnAnnouncements()
     {
         // Multicast loops back, so a daemon hears itself announce.

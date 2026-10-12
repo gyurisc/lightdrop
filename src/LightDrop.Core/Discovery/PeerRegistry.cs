@@ -44,7 +44,11 @@ public sealed class PeerRegistry(TimeProvider timeProvider, string localDeviceId
     /// <summary>
     /// Records an announcement, or refreshes an existing peer.
     /// </summary>
-    /// <returns><c>false</c> if the announcement was ignored.</returns>
+    /// <returns>
+    /// <c>true</c> only when the peer was not listed: its first sighting, or the first after it
+    /// went stale. A refresh of a listed peer, or an ignored announcement, returns <c>false</c> —
+    /// peers re-announce every minute, and the daemon logs each <c>true</c>.
+    /// </returns>
     public bool Observe(PeerAnnouncement announcement)
     {
         ArgumentNullException.ThrowIfNull(announcement);
@@ -60,6 +64,9 @@ public sealed class PeerRegistry(TimeProvider timeProvider, string localDeviceId
 
         lock (_gate)
         {
+            var listed = _peers.TryGetValue(announcement.DeviceId, out var existing)
+                && now - existing.LastSeen < StaleAfter;
+
             if (!_peers.ContainsKey(announcement.DeviceId))
             {
                 RemoveExpired(now);
@@ -80,7 +87,7 @@ public sealed class PeerRegistry(TimeProvider timeProvider, string localDeviceId
             // than waiting for a TTL — that is what makes an unsolicited re-announcement take
             // effect promptly.
             _peers[announcement.DeviceId] = new Entry(announcement, now);
-            return true;
+            return !listed;
         }
     }
 

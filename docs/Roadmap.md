@@ -157,7 +157,8 @@ Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and 
 - [ ] Progress reporting (the CLI reports size, duration and throughput at the end only)
 - [ ] Manual verification between two real machines (one-Mac smoke test passed, see M2):
   - [x] 100 MB both ways, SHA-256 identical (2026-10-12); Mini (Ethernet) → Air (Wi-Fi) at
-        13.1 MB/s
+        13.1 MB/s,
+        Air → Mini at 31.2 MB/s
   - [ ] a multi-GB file; a small file; Wi-Fi ↔ Wi-Fi throughput
   - [ ] Ctrl+C mid-send: nothing appears under the final name on the receiver
   - [ ] unpair on the receiver, then send: refused

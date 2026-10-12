@@ -21,7 +21,7 @@ public sealed class PeerRegistry(TimeProvider timeProvider, string localDeviceId
     /// How long a peer survives without being heard from again.
     /// </summary>
     /// <remarks>
-    /// Three times the announcement interval, so a single dropped packet does not make a peer
+    /// Three times the daemon's query interval, so a single dropped packet does not make a peer
     /// flicker. Deliberately independent of the DNS record TTL: the standard 75-minute PTR TTL
     /// would leave a sleeping laptop listed as present for over an hour, and a device that sleeps
     /// or drops off Wi-Fi never sends a goodbye.

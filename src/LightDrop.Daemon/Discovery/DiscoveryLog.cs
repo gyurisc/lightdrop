@@ -31,6 +31,9 @@ internal static partial class DiscoveryLog
     [LoggerMessage(EventId = 203, Level = LogLevel.Debug, Message = "A peer query failed on one interface.")]
     public static partial void QueryFailed(ILogger logger, Exception exception);
 
+    [LoggerMessage(EventId = 209, Level = LogLevel.Debug, Message = "Announcing this device failed.")]
+    public static partial void AnnounceFailed(ILogger logger, Exception exception);
+
     [LoggerMessage(
         EventId = 204,
         Level = LogLevel.Warning,

@@ -33,9 +33,19 @@ public sealed class MdnsPeerDiscoveryTransport(
     /// </remarks>
     private static readonly DomainName ServiceDomain = new($"{ServiceName}.local");
 
+    /// <summary>How often this device asks for peers and announces itself.</summary>
+    /// <remarks>
+    /// A third of <see cref="PeerRegistry.StaleAfter"/>, so a peer must miss three refreshes in a
+    /// row before it is dropped. Nothing else refreshes the registry: the library announces nothing
+    /// on its own and, on macOS, re-queries only when it sees a new interface — so without this
+    /// every peer vanished three minutes after start.
+    /// </remarks>
+    public static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
+
     private MulticastService? _mdns;
     private ServiceDiscovery? _discovery;
     private ServiceProfile? _profile;
+    private ITimer? _refresh;
     private string? _localDeviceId;
 
     public event Action<PeerAnnouncement>? PeerAnnounced;
@@ -89,28 +99,72 @@ public sealed class MdnsPeerDiscoveryTransport(
 
         // Re-query whenever an interface appears, so plugging in Ethernet or joining Wi-Fi does
         // not require a restart.
-        mdns.NetworkInterfaceDiscovered += (_, _) =>
-        {
-            try
-            {
-                discovery.QueryServiceInstances(new DomainName(ServiceName));
-            }
-            catch (Exception ex)
-            {
-                // One unusable adapter must not take discovery down on the others.
-                DiscoveryLog.QueryFailed(logger, ex);
-            }
-        };
+        mdns.NetworkInterfaceDiscovered += (_, _) => Query(discovery);
 
         discovery.Advertise(profile);
         mdns.Start();
+
+        // Due immediately, so peers hear the first announcement without waiting a full interval.
+        _refresh = TimeProvider.System.CreateTimer(
+            _ => Refresh(discovery, profile), state: null, TimeSpan.Zero, RefreshInterval);
 
         DiscoveryLog.Started(logger, ServiceName, servicePort);
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken = default)
+    /// <summary>Asks for peers, then announces this device.</summary>
+    /// <remarks>
+    /// Both halves are needed on a network that carries multicast in one direction only. Seen
+    /// 2026-10-12: a router delivered a Wi-Fi MacBook Air's multicast to an Ethernet Mac Mini but
+    /// none of the Mini's to the Air, while unicast worked both ways. The Air learns of the Mini
+    /// from the Mini's unicast answer to the Air's QU question (<see cref="Query"/>); the Mini, whose
+    /// questions never reach the Air, learns of the Air from the Air's multicast announcement.
+    /// </remarks>
+    private void Refresh(ServiceDiscovery discovery, ServiceProfile profile)
     {
+        Query(discovery);
+
+        try
+        {
+            // The library's minimum: two unsolicited responses, about a second apart, blocking
+            // this timer callback in between. Once a minute that is harmless.
+            discovery.Announce(profile, numberOfTimes: 2);
+        }
+        catch (Exception ex)
+        {
+            DiscoveryLog.AnnounceFailed(logger, ex);
+        }
+    }
+
+    /// <summary>Asks every peer on the link to answer this device directly.</summary>
+    /// <remarks>
+    /// A QU question: the unicast-response bit asks responders to reply to the querier rather than
+    /// to the multicast group, so a device that receives no multicast still hears the answers.
+    /// Unicast gets through wherever pairing and transfer could anyway; both are unicast.
+    /// </remarks>
+    private void Query(ServiceDiscovery discovery)
+    {
+        try
+        {
+            discovery.QueryUnicastServiceInstances(new DomainName(ServiceName));
+        }
+        catch (Exception ex)
+        {
+            // One unusable adapter must not take discovery down on the others, and a failed
+            // periodic query must not kill the timer.
+            DiscoveryLog.QueryFailed(logger, ex);
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        if (_refresh is not null)
+        {
+            // Waits out a callback in flight, so no announcement can follow the goodbye below and
+            // list this device again on its peers until it ages out.
+            await _refresh.DisposeAsync().ConfigureAwait(false);
+        }
+
         if (_discovery is not null && _profile is not null)
         {
             try
@@ -135,7 +189,6 @@ public sealed class MdnsPeerDiscoveryTransport(
         }
 
         DiscoveryLog.Stopped(logger);
-        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -226,6 +279,7 @@ public sealed class MdnsPeerDiscoveryTransport(
 
     public ValueTask DisposeAsync()
     {
+        _refresh?.Dispose();
         _discovery?.Dispose();
         _mdns?.Dispose();
         return ValueTask.CompletedTask;

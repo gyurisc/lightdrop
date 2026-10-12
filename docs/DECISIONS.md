@@ -426,3 +426,26 @@ can know. Re-read for every file, so an edit applies without a restart.
 
 Never overwrite, never half a file: stream to a hidden temp file in the same folder, reserve
 `name (n).ext` with an atomic create-if-absent, then move over the reservation (`DownloadFolder`).
+
+---
+
+### 32. Discovery re-asks every minute, and asks for unicast answers
+
+Found on the first two-machine test (2026-10-12, Mac Mini on Ethernet, MacBook Air on Wi-Fi). Two
+bugs stacked. The daemon queried only at start (the library re-queries on new interfaces, and on
+macOS not even that) and sent no periodic announcements, so every peer aged out of the 180-second
+registry window three minutes after start, on any network. And the router delivered the Air's
+multicast to the Mini but none of the Mini's to the Air — not even macOS's own Bonjour — while
+unicast in both directions worked.
+
+Fix (`MdnsPeerDiscoveryTransport.Refresh`): every 60 seconds, ask with the QU bit set so peers
+answer the asker by unicast, *and* announce by multicast. The Air hears the Mini through unicast
+answers; the Mini, whose questions never reach the Air, hears the Air through its announcements.
+A test pins the interval to at most a third of `PeerRegistry.StaleAfter`.
+
+**Cost:** a daemon no longer learns of peers from answers to someone else's query, and
+re-announcing every minute is more than RFC 6762 asks for (it announces at start and lets queries
+refresh caches). One query and two announcement packets a minute per daemon is negligible on a
+home LAN.
+**Not done:** a manual `peer add <address>` fallback for networks that drop multicast in *both*
+directions. Add it when such a network shows up.

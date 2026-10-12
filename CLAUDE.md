@@ -144,5 +144,6 @@ Prefer behavior over implementation detail: do not assert on the `.tmp` filename
 - macOS release binaries need an executable bit and a Gatekeeper story (codesign/notarize, or a documented `xattr` workaround). CI does not publish.
 - Discovery is verified between two real machines (Windows ↔ macOS, 2026-08-16). **Pairing and file transfer are not**: they were verified on 2026-10-09 only between two daemons on one Mac, with real mDNS and the published trimmed binary. The two-machine checklist is in `docs/Roadmap.md` M2/M3.
 - If the peer port cannot be bound at daemon start (port in use, Hyper-V excluded range), the daemon warns once and runs without receiving. Not surfaced in `lightdrop health` yet.
-- Windows shows a Defender Firewall prompt for the peer port; behaviour when it is denied is untested.
+- Windows shows a Defender Firewall prompt for the peer port; behaviour when it is denied is untested. With the macOS firewall on, macOS asks the same ("accept incoming network connections?"), and asks again after every rebuild under `dotnet run`, because the binary changes.
+- Discovery re-asks (with unicast answers requested) and re-announces every 60 s (`docs/DECISIONS.md` #32), because a home router was found carrying multicast in one direction only. A network that drops multicast in both directions still defeats it; there is no manual-address fallback.
 - The mDNS library is a community fork of a project abandoned in 2019, and its `Common.Logging` dependency required a targeted trim suppression (`docs/DECISIONS.md` #16).

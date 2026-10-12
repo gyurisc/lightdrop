@@ -232,8 +232,18 @@ caller, not in this contract.
 
 ### Liveness
 
-Peers expire after **180 seconds** without being heard from — three times the announcement
-interval, deliberately independent of the DNS TTL. The standard 75-minute PTR TTL would leave a
+At start and then **every 60 seconds**, every daemon does two things. It asks for `_lightdrop._tcp`
+instances with a QU question (the unicast-response bit set), so each peer answers the asker
+directly; it also asks whenever a network interface appears. And it announces itself by multicast,
+unprompted. Either alone fails on a network that carries multicast one way only — seen on a home
+router that delivered a Wi-Fi laptop's multicast to a wired Mac but none of the Mac's to the laptop.
+The laptop learns of the Mac from unicast answers; the Mac, whose questions never arrive, learns of
+the laptop from its announcements. A unicast answer comes from the responder's ephemeral port, not
+5353, which RFC 6762 says to ignore; LightDrop's library accepts it, and only LightDrop answers this
+service type.
+
+Peers expire after **180 seconds** without being heard from — three times the refresh interval,
+deliberately independent of the DNS TTL. The standard 75-minute PTR TTL would leave a
 sleeping laptop listed for an hour, and a device that sleeps or drops off Wi-Fi never sends a
 goodbye. A goodbye (TTL 0) evicts immediately. Expiry is computed on read; there is no sweep timer.
 

@@ -54,12 +54,11 @@ Verified 2026-08-16 between a Windows 11 desktop (Ethernet) and a Mac Mini
       Public profile, alongside the built-in `mDNS (UDP-In)` Public rule
 - [x] Ctrl+C on one machine removes it from the other's list promptly (goodbye packet) — immediate,
       nowhere near the 180s window
-- [ ] Sleeping a machine ages it out within ~180s rather than instantly or never — seen, not yet
-      done deliberately. 2026-10-12: the Air apparently slept and the Mini dropped it about 3 minutes
-      after its last announcement. From that evening into 2026-10-13 the Mini logged the Air
-      reappearing 22 times without either daemon being restarted, which fits it dropping out on
-      sleep and coming back on each wake. Stale expiry is not logged, so the ~180s timing itself was
-      not measured.
+- [x] Sleeping a machine ages it out within ~180s rather than instantly or never — measured
+      2026-10-13 (Mini ↔ Air): the Mini dropped the sleeping Air exactly 180 s after last hearing
+      it, and heard it again about 25 s after it woke. While the lid was still shut the Air also
+      woke briefly on its own (Power Nap) and announced for about a minute, which explains the 22
+      reappearances the Mini logged overnight.
 - [ ] A multicast-blocking network: daemon still starts, `/health` still works, peers list empty
 - [x] macOS device name shows a friendly name — `Environment.MachineName` returned the plain computer
       name, with no `.local` suffix
@@ -139,7 +138,8 @@ Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and 
       allowed → works. Under `dotnet run` it asks again after every rebuild. Denied: untested
 - [ ] Answering `n` on one side: nothing pinned on either
 - [ ] Ctrl+C during `pair` on one side: the other times out cleanly, nothing pinned
-- [ ] Restart both daemons: still paired, peer listener up at start
+- [x] Restart both daemons: still paired, peer listener up at start — 2026-10-13, after both were
+      redeployed with `1839c41` and restarted under `autostart`: a send each way succeeded
 
 ### Known traps
 
@@ -164,10 +164,18 @@ Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and 
   - [x] 100 MB both ways, SHA-256 identical (2026-10-12); Mini (Ethernet) → Air (Wi-Fi) at
         13.1 MB/s,
         Air → Mini at 31.2 MB/s
-  - [ ] a multi-GB file; a small file; Wi-Fi ↔ Wi-Fi throughput
-  - [ ] Ctrl+C mid-send: nothing appears under the final name on the receiver
+  - [x] a multi-GB file — 4.5 GiB (past both the 2 GiB and 4 GiB marks) Mini → Air in 1 min 16 s
+        at 60.2 MB/s, SHA-256 identical (2026-10-13)
+  - [x] a small file — 100 bytes each way (2026-10-13)
+  - [ ] Wi-Fi ↔ Wi-Fi throughput
+  - [x] Ctrl+C mid-send: nothing appears under the final name on the receiver — interrupted about
+        20 s into the 4.5 GiB send: the CLI exited in 0.02 s, the Mini's connection to the Air
+        closed and its upload stopped, no `.partial` was left on the Air, and the full resend was
+        saved under the original name rather than as a copy (2026-10-13)
   - [ ] unpair on the receiver, then send: refused
-  - [ ] a peer that went to sleep: `send` fails within ~10 s, not 75
+  - [x] a peer that went to sleep: `send` fails within ~10 s, not 75 — 8.1 s while the Air was still
+        listed ("may be offline or asleep"); 0.2 s once the Mini had dropped it ("paired but not on
+        the network right now") (2026-10-13)
 
 **Known gap:** if the peer port cannot be bound when the daemon starts with peers already paired
 (another process holds it, or it falls in a Hyper-V excluded range on Windows), the daemon logs one

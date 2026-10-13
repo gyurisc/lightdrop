@@ -36,7 +36,7 @@ public sealed class PeerSearchTests
         ProtocolVersion = 1,
         Capabilities = [],
         Port = 5533,
-        Address = "192.168.0.149",
+        Address = "192.168.1.50",
         LastSeen = Now,
     };
 

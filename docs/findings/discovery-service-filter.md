@@ -4,18 +4,21 @@
 **Status:** diagnosed, not fixed.
 **Affects:** `src/LightDrop.Daemon/Discovery/MdnsPeerDiscoveryTransport.cs`
 
+Host names, device ids and the TV's model below are replaced with placeholders; the shapes are as
+observed.
+
 ## Symptom
 
 `lightdrop peers` on the Windows machine listed three peers where only one was real:
 
 ```
 DEVICE         PLATFORM   PROTO  ID
-Peer da8e0965  unknown    0      da8e0965
-Pips-Mac-mini  macos      1      a5165a47
-Peer 5ECE3D53  unknown    0      5ECE3D53
+Peer 1f2e3d4c  unknown    0      1f2e3d4c
+Mac-mini       macos      1      a1b2c3d4
+Peer 5A6B7C8D  unknown    0      5A6B7C8D
 ```
 
-`da8e0965` is an LG webOS TV's Google Cast service. It is not a LightDrop device and never was.
+`1f2e3d4c` is a smart TV's Google Cast service. It is not a LightDrop device and never was.
 
 ## Cause
 
@@ -45,10 +48,10 @@ A throwaway probe using the same library, browsing **only** `_lightdrop._tcp`, p
 `ServiceInstanceDiscovered` event and flagging those whose TXT record carries an `id=` key:
 
 ```
->>> ID  ae471fdc...._lightdrop._tcp.local     id=ae471fdc0c004589b6ab810fcf6c9324
-        [LG] webOS TV OLED48B53LA._airplay._tcp.local
->>> ID  OLED48B53LA.DEUQLJP-da8e0965f8964be1afbb80e2a4fa288c._googlecast._tcp.local
-          id=da8e0965f8964be1afbb80e2a4fa288c
+>>> ID  e5f6a7b8...._lightdrop._tcp.local     id=e5f6a7b8c9d0e1f2a3b4c5d6e7f80910
+        Living Room TV._airplay._tcp.local
+>>> ID  TV-1f2e3d4c5b6a79881726354453627180._googlecast._tcp.local
+          id=1f2e3d4c5b6a79881726354453627180
 --- 3 distinct service instances seen while browsing _lightdrop._tcp only ---
 ```
 
@@ -59,12 +62,12 @@ Two things this shows:
 - The AirPlay instance survives only by accident: its key is `deviceid`, not `id`, so
   `TryCreate` rejects it for want of an identifier. Nothing in the code declined it.
 
-`5ECE3D53` did not announce during the probe window and was not identified. Same signature, so
+`5A6B7C8D` did not announce during the probe window and was not identified. Same signature, so
 almost certainly another appliance on the same link.
 
 ## Not affected
 
-Cross-machine discovery works. `Pips-Mac-mini / macos / 1` is a correct row, and this is the
+Cross-machine discovery works. `Mac-mini / macos / 1` is a correct row, and this is the
 first confirmation of discovery between two real machines rather than two daemons on one — which
 closes a gap listed in `CLAUDE.md`.
 
@@ -83,9 +86,9 @@ if (!e.ServiceInstanceName.IsSubdomainOf(ServiceDomain)) return;
 
 | Name | `IsSubdomainOf("_lightdrop._tcp.local")` |
 |---|---|
-| `ae471fdc…._lightdrop._tcp.local` | `True` |
-| `OLED48B53LA-da8e0965…._googlecast._tcp.local` | `False` |
-| `LGwebOSTV._airplay._tcp.local` | `False` |
+| `e5f6a7b8…._lightdrop._tcp.local` | `True` |
+| `TV-1f2e3d4c…._googlecast._tcp.local` | `False` |
+| `Living Room TV._airplay._tcp.local` | `False` |
 | `_lightdrop._tcp.local` | `False` |
 
 The shutdown handler is not currently exploitable — it derives a device id from `Labels[0]`, and

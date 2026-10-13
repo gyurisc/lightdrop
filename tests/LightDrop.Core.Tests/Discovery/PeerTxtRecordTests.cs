@@ -5,7 +5,7 @@ namespace LightDrop.Core.Tests.Discovery;
 
 public sealed class PeerTxtRecordTests
 {
-    private const string Address = "192.168.0.149";
+    private const string Address = "192.168.1.50";
 
     private static string[] WellFormed(params string[] extra) =>
     [
@@ -137,7 +137,7 @@ public sealed class PeerTxtRecordTests
         // an `id` key, which used to be enough to mint a peer — a TV would appear in the list with
         // a derived name, "unknown" platform and protocol 0. Every LightDrop announcement carries
         // `pv` (Build always writes it), so its absence means the record is not ours.
-        string[] txt = [$"{PeerTxtRecord.DeviceIdKey}=da8e0965f8964be1afbb80e2a4fa288c", "fn=Living Room TV"];
+        string[] txt = [$"{PeerTxtRecord.DeviceIdKey}=1f2e3d4c5b6a79881726354453627180", "fn=Living Room TV"];
 
         Assert.False(PeerTxtRecord.TryParse(txt, 8009, Address, out var announcement));
         Assert.Null(announcement);

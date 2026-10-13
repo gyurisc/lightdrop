@@ -31,6 +31,8 @@ CI runs restore/build/test on `windows-latest` and `macos-latest`.
 
 `docs/Architecture.md` (responsibilities), `docs/Protocol.md` (contracts and direction), `docs/Roadmap.md` (milestones), `docs/DECISIONS.md` (tradeoffs and why). Update them when architecture or protocol changes. Prefer a useful two-page doc over a long stale one.
 
+**The repository is public.** In docs, tests, code comments and commit messages, describe test machines generically ("the Mini", "a Windows desktop") and use placeholders for anything real. That means no real IP or MAC addresses, host names, device ids, people's names, home-folder paths, or the models of other devices on the network. Use generic private addresses such as `192.168.1.50` in tests (they must stay private, or `LocalNetworkAddress` rejects them). Recording OS versions is fine.
+
 ## Architecture
 
 ```
@@ -139,7 +141,7 @@ Prefer behavior over implementation detail: do not assert on the `.tmp` filename
 
 ## Known gaps
 
-- macOS was verified by hand on 2026-08-16 (Mac Mini, Apple Silicon, macOS 15.7.4): clean build, full test suite, trimmed single-file publish, `state.json` created `0600`, config loading, stable identity across restarts, and two-way discovery with Windows. `Environment.MachineName` returned a clean `Pips-Mac-mini` — the old claim that it yields `Something.local` was wrong.
+- macOS was verified by hand on 2026-08-16 (Mac Mini, Apple Silicon, macOS 15.7.4): clean build, full test suite, trimmed single-file publish, `state.json` created `0600`, config loading, stable identity across restarts, and two-way discovery with Windows. `Environment.MachineName` returned the plain computer name — the old claim that it yields `Something.local` was wrong.
 - **Denying the macOS Local Network permission did not stop discovery** on 15.7.4 — the daemon kept advertising *and* kept seeing peers with the permission explicitly off. The README's claim that discovery requires it is unverified. One machine, no reboot between toggling and testing, so this is an observation rather than proven causation.
 - macOS release binaries need an executable bit and a Gatekeeper story (codesign/notarize, or a documented `xattr` workaround). CI does not publish.
 - Discovery is verified between two real machines (Windows ↔ macOS, 2026-08-16; Mac Mini ↔ MacBook Air, 2026-10-12, after #32). **Pairing and a 100 MB transfer both ways are verified between two Macs** (2026-10-12). Still open: Windows at either end, multi-GB files, Ctrl+C mid-send, a sleeping peer — the checklist is in `docs/Roadmap.md` M2/M3.

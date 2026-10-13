@@ -17,7 +17,7 @@ public sealed class PeerRegistryTests
             1,
             null,
             5533,
-            "192.168.0.149",
+            "192.168.1.50",
             out var announcement));
         return announcement!;
     }

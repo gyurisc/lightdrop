@@ -35,7 +35,7 @@ Automated tests cannot cover multicast: CI runners cannot route it, and macOS dr
 without the Local Network permission, so a test would hang rather than fail. These must be done by
 hand.
 
-Verified 2026-08-16 between a Windows 11 desktop (Ethernet, `192.168.0.222/24`) and a Mac Mini
+Verified 2026-08-16 between a Windows 11 desktop (Ethernet) and a Mac Mini
 (Apple Silicon, macOS 15.7.4), both built from source at `8a67966`.
 
 - [x] Two daemons on one Windows machine (`LIGHTDROP_PORT`, `LIGHTDROP_DATA_DIR`) discover each
@@ -61,10 +61,10 @@ Verified 2026-08-16 between a Windows 11 desktop (Ethernet, `192.168.0.222/24`) 
       sleep and coming back on each wake. Stale expiry is not logged, so the ~180s timing itself was
       not measured.
 - [ ] A multicast-blocking network: daemon still starts, `/health` still works, peers list empty
-- [x] macOS device name shows a friendly name — `Environment.MachineName` returned `Pips-Mac-mini`,
-      with no `.local` suffix
-- [x] A machine with Hyper-V/WSL adapters up still discovers — a `vEthernet` adapter was up on
-      `172.26.176.1` throughout; the interface filter did its job. VPN adapters still untested.
+- [x] macOS device name shows a friendly name — `Environment.MachineName` returned the plain computer
+      name, with no `.local` suffix
+- [x] A machine with Hyper-V/WSL adapters up still discovers — a `vEthernet` adapter was up
+      throughout; the interface filter did its job. VPN adapters still untested.
 
 **Surprise worth chasing:** on macOS 15.7.4, denying the Local Network permission did not stop
 discovery at all — the Mac kept advertising *and* kept seeing the Windows peer with the permission

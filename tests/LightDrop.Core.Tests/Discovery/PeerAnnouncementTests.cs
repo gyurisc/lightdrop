@@ -21,7 +21,7 @@ public sealed class PeerAnnouncementTests
         int protocolVersion = 1,
         IEnumerable<string>? capabilities = null,
         int port = 5533,
-        string? address = "192.168.0.149")
+        string? address = "192.168.1.50")
     {
         Assert.True(PeerAnnouncement.TryCreate(
             deviceId, deviceName, platform, protocolVersion, capabilities, port, address, out var announcement));
@@ -94,7 +94,7 @@ public sealed class PeerAnnouncementTests
     {
         // Without an identifier there is nothing to deduplicate or display against.
         Assert.False(PeerAnnouncement.TryCreate(
-            deviceId, "Laptop", DevicePlatform.MacOS, 1, null, 5533, "192.168.0.149", out var announcement));
+            deviceId, "Laptop", DevicePlatform.MacOS, 1, null, 5533, "192.168.1.50", out var announcement));
         Assert.Null(announcement);
     }
 
@@ -102,7 +102,7 @@ public sealed class PeerAnnouncementTests
     public void RejectsADeviceIdMadeEntirelyOfControlCharacters()
     {
         Assert.False(PeerAnnouncement.TryCreate(
-            $"{Escape}{ZeroWidthSpace}", "Laptop", DevicePlatform.MacOS, 1, null, 5533, "192.168.0.149", out _));
+            $"{Escape}{ZeroWidthSpace}", "Laptop", DevicePlatform.MacOS, 1, null, 5533, "192.168.1.50", out _));
     }
 
     [Theory]
@@ -111,7 +111,7 @@ public sealed class PeerAnnouncementTests
     public void RejectsAnOutOfRangePort(int port)
     {
         Assert.False(PeerAnnouncement.TryCreate(
-            "peer-1", "Laptop", DevicePlatform.MacOS, 1, null, port, "192.168.0.149", out _));
+            "peer-1", "Laptop", DevicePlatform.MacOS, 1, null, port, "192.168.1.50", out _));
     }
 
     [Fact]

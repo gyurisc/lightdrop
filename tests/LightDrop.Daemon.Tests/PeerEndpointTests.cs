@@ -64,7 +64,7 @@ public sealed class PeerEndpointTests
             using (client)
             {
                 transport.Announce(
-                    "peer-1", "Work Laptop", "windows", protocolVersion: 1, port: 5533, address: "192.168.0.222");
+                    "peer-1", "Work Laptop", "windows", protocolVersion: 1, port: 5533, address: "192.168.1.51");
 
                 var peer = Assert.Single((await GetPeersAsync(client)));
                 Assert.Equal("peer-1", peer.DeviceId);
@@ -72,7 +72,7 @@ public sealed class PeerEndpointTests
                 Assert.Equal("windows", peer.Platform);
                 Assert.Equal(1, peer.ProtocolVersion);
                 Assert.Equal(5533, peer.Port);
-                Assert.Equal("192.168.0.222", peer.Address);
+                Assert.Equal("192.168.1.51", peer.Address);
                 Assert.Empty(peer.Capabilities);
             }
 

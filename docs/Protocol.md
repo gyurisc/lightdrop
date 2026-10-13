@@ -19,7 +19,7 @@ Liveness, identity, and everything a peer needs before it can talk to this devic
 {
   "version": "0.1.0",
   "protocolVersion": 1,
-  "deviceId": "ae471fdc0c004589b6ab810fcf6c9324",
+  "deviceId": "e5f6a7b8c9d0e1f2a3b4c5d6e7f80910",
   "deviceName": "Work Laptop",
   "platform": "windows",
   "capabilities": ["SendFile"]
@@ -217,7 +217,7 @@ discovery alongside the list, because an empty list on its own is ambiguous:
     {
       "deviceId": "…", "deviceName": "Work Laptop", "platform": "windows",
       "protocolVersion": 1, "capabilities": ["SendFile"], "port": 5534,
-      "address": "192.168.0.222", "lastSeen": "…"
+      "address": "192.168.1.51", "lastSeen": "…"
     }
   ]
 }

@@ -57,7 +57,7 @@ internal sealed class FakePeerDiscoveryTransport : IPeerDiscoveryTransport
         string platform = DevicePlatform.MacOS,
         int protocolVersion = 1,
         int port = 5533,
-        string address = "192.168.0.149")
+        string address = "192.168.1.50")
     {
         if (!PeerAnnouncement.TryCreate(
                 deviceId, deviceName, platform, protocolVersion, null, port, address, out var announcement))

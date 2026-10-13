@@ -15,7 +15,7 @@ namespace LightDrop.Core.Tests.Discovery;
 public sealed class LocalNetworkAddressTests
 {
     [Theory]
-    [InlineData("192.168.0.149")]
+    [InlineData("192.168.1.50")]
     [InlineData("10.0.0.5")]
     [InlineData("172.16.0.1")]
     [InlineData("172.31.255.254")]
@@ -60,14 +60,14 @@ public sealed class LocalNetworkAddressTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("not-an-address")]
-    [InlineData("192.168.0.149:5533")]
+    [InlineData("192.168.1.50:5533")]
     public void RejectsWhatIsNotAnAddressAtAll(string? address) =>
         Assert.False(LocalNetworkAddress.TryNormalize(address, out _));
 
     [Fact]
     public void NormalizesSurroundingWhitespace()
     {
-        Assert.True(LocalNetworkAddress.TryNormalize("  192.168.0.149  ", out var normalized));
-        Assert.Equal("192.168.0.149", normalized);
+        Assert.True(LocalNetworkAddress.TryNormalize("  192.168.1.50  ", out var normalized));
+        Assert.Equal("192.168.1.50", normalized);
     }
 }

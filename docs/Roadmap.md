@@ -75,7 +75,7 @@ proven causation.
 Settings toggle is the only way back, and the app cannot explain that in-band. The mDNS library is
 a community fork of a project abandoned in 2019.
 
-## M2 — Secure pairing ✅ built — awaiting two-machine verification
+## M2 — Secure pairing ✅ verified between two Macs — Windows still open
 
 **Goal:** peers explicitly trust each other; unknown peers are rejected.
 
@@ -101,7 +101,8 @@ a community fork of a project abandoned in 2019.
 - [x] `lightdrop pair`, `lightdrop unpair`, `lightdrop peers --trusted` — `5f2e5c7`.
 - [ ] The pairing ceremony in the web UI (phase B of the companion UI) — deferred; the CLI is enough
       to test with
-- [ ] Manual verification between two real machines — the checklist below
+- [x] Manual verification between two real machines — the checklist below; done between two Macs,
+      Windows still open
 
 ### Verified on one machine (2026-10-09)
 
@@ -136,8 +137,14 @@ Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and 
       **denied** → what the user sees
 - [x] macOS: the **firewall** (when on) asks whether `lightdrop` may accept incoming connections;
       allowed → works. Under `dotnet run` it asks again after every rebuild. Denied: untested
-- [ ] Answering `n` on one side: nothing pinned on either
-- [ ] Ctrl+C during `pair` on one side: the other times out cleanly, nothing pinned
+- [x] Answering `n` on one side: nothing pinned on either — 2026-10-13, the Mini declined: it said
+      "declined on this device", the Air "declined on the other device" (even while still asking),
+      and `peers --trusted` was empty on both
+- [x] Ctrl+C during `pair` on one side: the other times out cleanly, nothing pinned — 2026-10-13,
+      Ctrl+C on the Mini while the code was showing: "Pairing cancelled. Nothing was saved." The
+      Air, which had answered `y`, is not told; it waited out its 60 s and said the codes were not
+      confirmed in time. A pairing straight afterwards succeeded, which it would refuse had either
+      side pinned the other
 - [x] Restart both daemons: still paired, peer listener up at start — 2026-10-13, after both were
       redeployed with `1839c41` and restarted under `autostart`: a send each way succeeded
 
@@ -172,7 +179,10 @@ Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and 
         20 s into the 4.5 GiB send: the CLI exited in 0.02 s, the Mini's connection to the Air
         closed and its upload stopped, no `.partial` was left on the Air, and the full resend was
         saved under the original name rather than as a copy (2026-10-13)
-  - [ ] unpair on the receiver, then send: refused
+  - [x] unpair on the receiver, then send: refused — 2026-10-13, refused at the TLS handshake in
+        0.5 s. The message names unpairing among the possible causes; the sender cannot tell a
+        refused key from a dropped connection. The Air's peer port stayed open, by design: the
+        listener is not stopped on unpair, it refuses every handshake until the daemon restarts
   - [x] a peer that went to sleep: `send` fails within ~10 s, not 75 — 8.1 s while the Air was still
         listed ("may be offline or asleep"); 0.2 s once the Mini had dropped it ("paired but not on
         the network right now") (2026-10-13)

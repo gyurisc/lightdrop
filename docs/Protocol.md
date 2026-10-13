@@ -192,8 +192,10 @@ the link and can announce for itself anyway.
 The SRV record advertises the **peer listener's port** (see *Pairing*): where a paired device, or
 one pairing right now, connects. It is still not an authorization boundary — knowing it gets a
 stranger as far as a TLS handshake that refuses any key not pinned. With nothing paired and no
-window open nothing listens on it at all. Port `0` was rejected: the DNS-SD signal for "no service
-here" is `Target="."`, not port zero, and zero breaks well-behaved clients for no security gain.
+window open at daemon start nothing listens on it at all; after the last unpair the listener stays
+up, refusing every handshake, until the daemon restarts. Port `0` was rejected: the DNS-SD signal
+for "no service here" is `Target="."`, not port zero, and zero breaks well-behaved clients for no
+security gain.
 
 ### Untrusted input
 

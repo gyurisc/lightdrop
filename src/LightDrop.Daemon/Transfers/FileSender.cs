@@ -58,6 +58,7 @@ internal sealed class FileSender(
     PairingService pairing,
     PeerRegistry registry,
     DeviceKeyProvider keys,
+    OutgoingTransfers transfers,
     ILogger<FileSender> logger)
 {
     /// <summary>The largest answer read back from the receiver; it is a file name or an error.</summary>
@@ -66,7 +67,15 @@ internal sealed class FileSender(
     /// <summary>How much of the receiver's own words are shown to the user.</summary>
     private const int MaxPeerTextBytes = 512;
 
-    public async Task<SendResult> SendAsync(string? path, string? peerQuery, CancellationToken cancellationToken)
+    /// <param name="transferId">
+    /// When given, the send's progress is reported under it (<see cref="OutgoingTransfers"/>) while
+    /// it runs.
+    /// </param>
+    public async Task<SendResult> SendAsync(
+        string? path,
+        string? peerQuery,
+        Guid? transferId,
+        CancellationToken cancellationToken)
     {
         if (!TryCheckPath(path, out var error))
         {
@@ -106,7 +115,8 @@ internal sealed class FileSender(
                        $"Check that its daemon is running and that both devices are on the same network.");
         }
 
-        return await SendToAsync(path, target.DeviceId, target.DeviceName, target.PublicKey, discovered, cancellationToken)
+        return await SendToAsync(
+                path, target.DeviceId, target.DeviceName, target.PublicKey, discovered, transferId, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -116,6 +126,7 @@ internal sealed class FileSender(
         string peerName,
         string pinnedKey,
         DiscoveredPeer discovered,
+        Guid? transferId,
         CancellationToken cancellationToken)
     {
         var address = new Uri($"https://{discovered.Address}:{discovered.Port}/");
@@ -154,7 +165,16 @@ internal sealed class FileSender(
 
             // Cut at the length declared below: a file another process is still appending to must
             // not send more than it said it would (see LengthLimitedStream).
-            using var content = new StreamContent(new LengthLimitedStream(file, length));
+            var body = new LengthLimitedStream(file, length);
+            using var content = new StreamContent(body);
+
+            // Reported from here until this method returns, however it ends, so a caller polling
+            // for progress never sees a finished send as still running.
+            using var progress = transferId is { } id ? transfers.Begin(id, length, () => body.BytesRead) : null;
+            if (transferId is not null && progress is null)
+            {
+                return new SendResult(SendOutcome.Invalid, Error: "A send with this transfer id is already running.");
+            }
 
             // Explicit, so the request carries Content-Length and is never chunked: the receiver
             // refuses a body whose length it cannot check up front.

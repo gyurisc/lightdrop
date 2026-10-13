@@ -30,8 +30,7 @@ LightDrop makes nearby devices feel like they're part of the same workstation.
 **Early development, ready to try between two machines.** Devices discover each other on the
 local network, pair once by comparing a six-digit code, and then send files to each other.
 Discovery is verified between Windows and macOS; pairing and transfer between two Macs, not yet
-with Windows at either end (`docs/Roadmap.md` M2/M3). Clipboard, screenshots and live progress are
-not built.
+with Windows at either end (`docs/Roadmap.md` M2/M3). Clipboard and screenshots are not built.
 
 ```bash
 lightdrop daemon                     # run the daemon (on both machines)
@@ -69,7 +68,9 @@ and guest networks — prevent it entirely.
    networks or the other machine cannot connect.
 5. **Send:** `lightdrop send ./photo.jpg "<the other's name>"`. The file lands in the receiver's
    `~/Downloads` (or `downloadFolder` from its `config.json`), never overwriting:
-   a second `photo.jpg` arrives as `photo (1).jpg`.
+   a second `photo.jpg` arrives as `photo (1).jpg`. A send that takes more than a second shows
+   how much has gone, the speed and the time left; Ctrl+C stops it, and the receiver discards
+   the part it had.
 
 `lightdrop peers --trusted` lists paired devices; `lightdrop unpair "<name>"` forgets one on this
 side only. The daemon's terminal logs every pairing step and every file received, with the peer's
@@ -248,11 +249,11 @@ console window at every login (`docs/DECISIONS.md` #33).
 
 - Peer discovery
 - Secure pairing
-- File transfer (one file at a time, from the CLI)
+- File transfer (one file at a time, from the CLI, with progress)
 
 ## Planned
 
-- Progress, and pairing from the page
+- Sending, progress and pairing from the web page
 - Clipboard text
 - Clipboard images
 - Screenshots

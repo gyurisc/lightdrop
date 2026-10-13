@@ -466,6 +466,116 @@ public sealed class FileTransferTests(PairingKeys keys) : IClassFixture<PairingK
         return sender;
     }
 
+    // ---- Progress, as `lightdrop send` polls it while its request waits. ----
+
+    [Fact]
+    public async Task ASendReportsHowFarItHasGotWhileItRuns()
+    {
+        // The receiver takes the first megabyte and stalls, so the send is held part way. The
+        // file is far larger than anything the sockets between them can buffer, so the count is
+        // caught strictly between the two ends.
+        const int Size = 64 * 1024 * 1024;
+        const int FirstPart = 1024 * 1024;
+        var partWay = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+
+        await using var receiver = ScriptedReceiver.Start(keys.Bob, async exchange =>
+        {
+            await exchange.WriteAsync("HTTP/1.1 100 Continue\r\n\r\n");
+            await exchange.ReadBodyAsync(FirstPart);
+            partWay.SetResult();
+            await release.Task;
+            await exchange.ReadBodyAsync(exchange.ContentLength - FirstPart);
+            await exchange.WriteAsync(ScriptedReceiver.Json(200, """{"savedAs":"big.bin"}"""));
+        });
+        await using var sender = await StartPinnedToBobAsync(receiver);
+        var path = WriteFile(sender, "big.bin", RandomBytes(Size, seed: 6));
+        var transferId = Guid.NewGuid();
+
+        var send = sender.SendAsync(path, "Mac Mini", transferId);
+        await partWay.Task.WaitAsync(TimeSpan.FromSeconds(15));
+
+        using (var running = await sender.GetSendProgressAsync(transferId))
+        {
+            Assert.Equal(HttpStatusCode.OK, running.StatusCode);
+            var progress = (await running.Content.ReadFromJsonAsync(LightDropJsonContext.Default.SendProgress))!;
+            Assert.Equal(Size, progress.Length);
+            Assert.InRange(progress.Sent, FirstPart, Size - 1);
+        }
+
+        release.SetResult();
+        using var response = await send;
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Done is done: a poller arriving late must not see it still running.
+        using var finished = await sender.GetSendProgressAsync(transferId);
+        Assert.Equal(HttpStatusCode.NotFound, finished.StatusCode);
+    }
+
+    [Fact]
+    public async Task AFailedSendIsNoLongerReported()
+    {
+        await using var receiver = ScriptedReceiver.Start(
+            keys.Bob, exchange => exchange.WriteAsync(ScriptedReceiver.Json(403, """{"error":"no"}""")));
+        await using var sender = await StartPinnedToBobAsync(receiver);
+        var path = WriteFile(sender, "notes.txt", [1, 2, 3]);
+        var transferId = Guid.NewGuid();
+
+        using var response = await sender.SendAsync(path, "Mac Mini", transferId);
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+
+        using var progress = await sender.GetSendProgressAsync(transferId);
+        Assert.Equal(HttpStatusCode.NotFound, progress.StatusCode);
+    }
+
+    [Fact]
+    public async Task ProgressForASendThatIsNotRunningIsNotFound()
+    {
+        await using var sender = await TestDaemon.StartAsync(SenderId, "Desk PC");
+
+        using var response = await sender.GetSendProgressAsync(Guid.NewGuid());
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ATransferIdAlreadyInUseIsRefusedAndTheFirstSendIsUntouched()
+    {
+        var partWay = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        await using var receiver = ScriptedReceiver.Start(keys.Bob, async exchange =>
+        {
+            await exchange.WriteAsync("HTTP/1.1 100 Continue\r\n\r\n");
+            partWay.TrySetResult();
+            await release.Task;
+            await exchange.ReadBodyAsync();
+            await exchange.WriteAsync(ScriptedReceiver.Json(200, """{"savedAs":"first.txt"}"""));
+        });
+        await using var sender = await StartPinnedToBobAsync(receiver);
+        var first = WriteFile(sender, "first.txt", [1, 2, 3]);
+        var second = WriteFile(sender, "second.txt", [4, 5, 6]);
+        var transferId = Guid.NewGuid();
+
+        var running = sender.SendAsync(first, "Mac Mini", transferId);
+        await partWay.Task.WaitAsync(TimeSpan.FromSeconds(15));
+
+        using (var duplicate = await sender.SendAsync(second, "Mac Mini", transferId))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
+        }
+
+        // Still reported as the first send, whose length is 3.
+        using (var progress = await sender.GetSendProgressAsync(transferId))
+        {
+            var reported = (await progress.Content.ReadFromJsonAsync(LightDropJsonContext.Default.SendProgress))!;
+            Assert.Equal(3, reported.Length);
+        }
+
+        release.SetResult();
+        using var response = await running;
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     // ---- What the receiver enforces, called directly as a (possibly hostile) paired peer. ----
 
     [Theory]

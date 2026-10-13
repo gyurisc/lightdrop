@@ -84,10 +84,11 @@ already exists. Adding a state-store reference to anything under `Discovery` sho
 
 ## Pairing and transfer
 
-Same split. **Core** holds the rules: `PairingSession` (states, deadlines on a `TimeProvider`,
-pin only when both said yes), `PairingCode`, `PinnedCertificate`, `PeerLookup`, and
-`ReceivedFileName`. **Daemon** holds the moving parts: `PairingCoordinator` (timers, the dial,
-calling `PairingService.PinAsync`), `PairingTls`, `PeerListener`, `FileSender`, `DownloadFolder`.
+Same split. **Core** holds the rules: `PairingSession` (states, deadlines on a `TimeProvider`, pin
+only when both said yes), `PairingCode`, `PinnedCertificate`, `PeerLookup`, `ReceivedFileName`, and
+`TransferRate` (the speed and time left `lightdrop send` shows). **Daemon** holds the moving parts:
+`PairingCoordinator` (timers, the dial, calling `PairingService.PinAsync`), `PairingTls`,
+`PeerListener`, `FileSender`, `OutgoingTransfers` (sends under way, for progress), `DownloadFolder`.
 Both coordinator and listener are concrete — one implementation each.
 
 The **peer listener** is a separate `WebApplication` on `0.0.0.0:<peerPort>` with mutual TLS. It

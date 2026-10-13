@@ -497,3 +497,23 @@ still applies.
 
 **Cost:** a machine with no network at all rebuilds its sockets every 150 s, quietly (Debug).
 
+### 35. Send progress is polled, not streamed
+
+`lightdrop send` showed nothing until the end, which for the 4.5 GiB test of 2026-10-13 was a
+silent minute and at Wi-Fi speeds would be many. The bytes are counted where they are read from the
+file, in the daemon; the CLI has to learn the count while its `POST /api/send` is still waiting.
+
+It sends a `transferId` it chose and polls `GET /api/send/{id}` twice a second, the way pairing
+already polls its session (#30). Streaming progress lines in the POST's response was the
+alternative: one request, no id, but the status line would have to be committed before the
+outcome is known, losing the `404`/`409`/`502` that `lightdrop send` turns into its messages. With
+polling, `POST /api/send` is unchanged, and a CLI talking to an older daemon, which ignores the id,
+simply shows no progress.
+
+The line is drawn only on a terminal, after the first second, so small files and redirected output
+print exactly what they did before. The speed is measured over the last five seconds rather than
+since the start (`TransferRate`, in Core and tested), so it follows a Wi-Fi link that slows down.
+
+**Cost:** a loopback request every half second during a send, and a new route on the loopback app
+that reveals a length and a count, for an id only its caller knows, to the local processes that
+could have started the send anyway.

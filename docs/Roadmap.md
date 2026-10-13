@@ -166,7 +166,9 @@ Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and 
 - [x] Capabilities projected from registered handlers — `5af505e`
 - [x] Sender hardened against its receiver and the network: sanitized errors, no proxy, a bounded
       dial (#29), exactly the declared length sent
-- [ ] Progress reporting (the CLI reports size, duration and throughput at the end only)
+- [x] Progress reporting — on a terminal, `lightdrop send` redraws one line twice a second: sent,
+      percentage, speed over the last 5 s, time left (`DECISIONS.md` #35). Verified 2026-10-13 with
+      1 GiB Mini → Air: 63 MB/s, the estimate counting down from 13 s, Ctrl+C erasing the line
 - [ ] Manual verification between two real machines (one-Mac smoke test passed, see M2):
   - [x] 100 MB both ways, SHA-256 identical (2026-10-12); Mini (Ethernet) → Air (Wi-Fi) at
         13.1 MB/s,

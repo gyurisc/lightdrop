@@ -132,9 +132,12 @@ internal sealed class ScriptedReceiver : IAsyncDisposable
         }
 
         /// <summary>Reads exactly <see cref="ContentLength"/> bytes of body.</summary>
-        public async Task<byte[]> ReadBodyAsync()
+        public Task<byte[]> ReadBodyAsync() => ReadBodyAsync(ContentLength);
+
+        /// <summary>Reads exactly <paramref name="count"/> bytes of body: part of it, to stall there.</summary>
+        public async Task<byte[]> ReadBodyAsync(long count)
         {
-            var body = new byte[ContentLength];
+            var body = new byte[count];
             await stream.ReadExactlyAsync(body);
             return body;
         }

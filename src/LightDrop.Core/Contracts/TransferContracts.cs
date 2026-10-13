@@ -13,6 +13,25 @@ public sealed record SendRequest
 
     /// <summary>A paired device's name or device-id prefix.</summary>
     public required string Peer { get; init; }
+
+    /// <summary>
+    /// Chosen by the caller, so it can ask <c>GET /api/send/{id}</c> how far this send has got
+    /// while this request is still waiting. Optional: without one, the send is not reported.
+    /// </summary>
+    public Guid? TransferId { get; init; }
+}
+
+/// <summary>Response of <c>GET /api/send/{id}</c>: how far a running send has got.</summary>
+public sealed record SendProgress
+{
+    /// <summary>The file's length, as declared to the receiver.</summary>
+    public required long Length { get; init; }
+
+    /// <summary>
+    /// Bytes read from the file so far. Runs ahead of what the receiver has by whatever the network
+    /// is buffering, so it can reach <see cref="Length"/> a moment before the send completes.
+    /// </summary>
+    public required long Sent { get; init; }
 }
 
 /// <summary>Response of <c>POST /api/send</c> once the other device has the whole file.</summary>

@@ -25,6 +25,11 @@ internal static class SendEndpoints
     /// <c>lightdrop send</c> -- the request is aborted, which cancels the upload, which makes the
     /// receiver delete what it had so far.
     /// </para>
+    /// <para>
+    /// Also maps <c>GET /api/send/{id}</c>: how far the send that carried <c>transferId</c> has
+    /// got, for the progress line. It reveals only a length and a count, to the same local
+    /// processes that could have started the send.
+    /// </para>
     /// </remarks>
     public static IEndpointRouteBuilder MapSendEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -33,7 +38,9 @@ internal static class SendEndpoints
                 [FromServices] FileSender sender,
                 CancellationToken cancellationToken) =>
         {
-            var result = await sender.SendAsync(request.Path, request.Peer, cancellationToken).ConfigureAwait(false);
+            var result = await sender
+                .SendAsync(request.Path, request.Peer, request.TransferId, cancellationToken)
+                .ConfigureAwait(false);
 
             if (result.Outcome == SendOutcome.Sent)
             {
@@ -52,6 +59,18 @@ internal static class SendEndpoints
 
             return TypedResults.Json(new ApiError { Error = result.Error! }, LightDropJsonContext.Default.ApiError, statusCode: status);
         });
+
+        // How far a running send has got, by the id its caller chose. Polled by `lightdrop send`
+        // while its POST above is still waiting; see OutgoingTransfers.
+        endpoints.MapGet("/api/send/{id:guid}", Results<Ok<SendProgress>, JsonHttpResult<ApiError>> (
+                Guid id,
+                [FromServices] OutgoingTransfers transfers) =>
+            transfers.Find(id) is { } progress
+                ? TypedResults.Ok(progress)
+                : TypedResults.Json(
+                    new ApiError { Error = "No send with this id is running." },
+                    LightDropJsonContext.Default.ApiError,
+                    statusCode: StatusCodes.Status404NotFound));
 
         return endpoints;
     }

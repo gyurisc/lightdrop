@@ -191,6 +191,7 @@ public static class LightDropDaemon
         // The commands paired peers may send, and the capabilities projected from them.
         services.AddCommandHandlers();
 
+        services.AddSingleton<OutgoingTransfers>();
         services.AddSingleton<FileSender>();
 
         // Discovered peers live here and nowhere else — in memory, for this process only. The

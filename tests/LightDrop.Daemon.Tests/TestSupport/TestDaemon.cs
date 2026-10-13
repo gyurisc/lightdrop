@@ -132,9 +132,15 @@ internal sealed class TestDaemon : IAsyncDisposable
     }
 
     /// <summary><c>POST /api/send</c>, as <c>lightdrop send</c> calls it.</summary>
-    public Task<HttpResponseMessage> SendAsync(string path, string peer) =>
+    public Task<HttpResponseMessage> SendAsync(string path, string peer, Guid? transferId = null) =>
         Api.PostAsJsonAsync(
-            "api/send", new SendRequest { Path = path, Peer = peer }, LightDropJsonContext.Default.SendRequest);
+            "api/send",
+            new SendRequest { Path = path, Peer = peer, TransferId = transferId },
+            LightDropJsonContext.Default.SendRequest);
+
+    /// <summary><c>GET /api/send/{id}</c>, as <c>lightdrop send</c> polls it.</summary>
+    public Task<HttpResponseMessage> GetSendProgressAsync(Guid transferId) =>
+        Api.GetAsync($"api/send/{transferId}");
 
     public Task<HttpResponseMessage> StartPairingAsync(string peer) =>
         Api.PostAsJsonAsync(

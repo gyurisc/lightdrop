@@ -107,6 +107,12 @@ discovered, `502` the peer could not be reached or refused. Held open for the wh
 closing it cancels the upload. Behind the origin check, so a web page cannot call it — any process
 of the same user can (`DECISIONS.md` #28).
 
+An optional `"transferId"` (a GUID the caller chooses) makes the send's progress visible while the
+request waits: `GET /api/send/{transferId}` → `200 {"length", "sent"}` while it runs, `404` before
+it starts and after it ends, however it ended. `sent` counts bytes read from the file, so it runs
+slightly ahead of the receiver. An id already in use by a running send is refused with `400`.
+`lightdrop send` polls this twice a second (`DECISIONS.md` #35).
+
 ## Direction: transport
 
 Boring and inspectable.

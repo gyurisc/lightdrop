@@ -11,10 +11,18 @@ namespace LightDrop.Daemon.Transfers;
 /// takes exactly the declared bytes and saves them as complete, while the sender's HTTP stack fails
 /// on the excess and reports a failed send for a file that arrived. Cut at the declared length,
 /// both sides agree on a snapshot of the file as it was when the send began.
+/// <para>
+/// It also counts, for the progress <c>lightdrop send</c> shows: <see cref="BytesRead"/> is read
+/// from another thread while the HTTP stack reads this one.
+/// </para>
 /// </remarks>
 internal sealed class LengthLimitedStream(Stream inner, long length) : Stream
 {
+    private readonly long _length = length;
     private long _remaining = length;
+
+    /// <summary>How much has been read so far. Safe to call from any thread.</summary>
+    public long BytesRead => _length - Volatile.Read(ref _remaining);
 
     public override bool CanRead => true;
 
@@ -40,7 +48,7 @@ internal sealed class LengthLimitedStream(Stream inner, long length) : Stream
         }
 
         var read = inner.Read(buffer[..(int)Math.Min(buffer.Length, _remaining)]);
-        _remaining -= read;
+        Volatile.Write(ref _remaining, _remaining - read);
         return read;
     }
 
@@ -56,7 +64,7 @@ internal sealed class LengthLimitedStream(Stream inner, long length) : Stream
 
         var read = await inner.ReadAsync(buffer[..(int)Math.Min(buffer.Length, _remaining)], cancellationToken)
             .ConfigureAwait(false);
-        _remaining -= read;
+        Volatile.Write(ref _remaining, _remaining - read);
         return read;
     }
 

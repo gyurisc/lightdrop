@@ -489,9 +489,11 @@ Peers are no signal: a daemon alone on the network hears none and is not broken.
 
 Verified on the Mini (2026-10-12) with two probe daemons: the real build ran four minutes without
 once calling itself deaf; a variant that ignored its own echo rebuilt at the third refresh with its
-socket and file counts flat. **Not verified:** that a rebuild actually cures the permission case,
-which could not be reproduced on demand — if macOS also blocks a daemon's own loopback, the
-watchdog sees nothing wrong and the README's restart advice still applies.
+socket and file counts flat. Then the real build ran under launchd for 19½ hours, overnight, while
+the Air slept and woke around it, and never once called itself deaf. **Not verified:** that a
+rebuild actually cures the permission case, which could not be reproduced on demand — if macOS also
+blocks a daemon's own loopback, the watchdog sees nothing wrong and the README's restart advice
+still applies.
 
 **Cost:** a machine with no network at all rebuilds its sockets every 150 s, quietly (Debug).
 

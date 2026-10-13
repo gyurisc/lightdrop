@@ -54,9 +54,12 @@ Verified 2026-08-16 between a Windows 11 desktop (Ethernet, `192.168.0.222/24`) 
       Public profile, alongside the built-in `mDNS (UDP-In)` Public rule
 - [x] Ctrl+C on one machine removes it from the other's list promptly (goodbye packet) — immediate,
       nowhere near the 180s window
-- [ ] Sleeping a machine ages it out within ~180s rather than instantly or never — seen once
-      (2026-10-12: the Air apparently slept and the Mini dropped it about 3 minutes after its last
-      announcement), not yet done deliberately
+- [ ] Sleeping a machine ages it out within ~180s rather than instantly or never — seen, not yet
+      done deliberately. 2026-10-12: the Air apparently slept and the Mini dropped it about 3 minutes
+      after its last announcement. From that evening into 2026-10-13 the Mini logged the Air
+      reappearing 22 times without either daemon being restarted, which fits it dropping out on
+      sleep and coming back on each wake. Stale expiry is not logged, so the ~180s timing itself was
+      not measured.
 - [ ] A multicast-blocking network: daemon still starts, `/health` still works, peers list empty
 - [x] macOS device name shows a friendly name — `Environment.MachineName` returned `Pips-Mac-mini`,
       with no `.local` suffix

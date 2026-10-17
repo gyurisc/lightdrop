@@ -517,3 +517,19 @@ since the start (`TransferRate`, in Core and tested), so it follows a Wi-Fi link
 **Cost:** a loopback request every half second during a send, and a new route on the loopback app
 that reveals a length and a count, for an id only its caller knows, to the local processes that
 could have started the send anyway.
+
+### 36. A peer port that cannot be bound is reported, not fatal
+
+With peers pinned, a daemon whose peer port is taken (another process, or on Windows a Hyper-V
+excluded range) runs on without receiving. Until now the only sign was one error line in its log,
+and on the other device a send failing with "may be offline or asleep".
+
+Exiting instead was the alternative: impossible to miss, but it would give up sending, discovery
+and the CLI to protest about receiving, and under autostart launchd would restart it into the same
+failure again and again. So the daemon keeps running, and `/health` carries `peerListener`: `Off`
+(nothing paired), `Listening`, or `Failed` with the reason, which `lightdrop health` prints as
+`receiving NO`. The failure stands until a start succeeds: a restart, or the next pairing window,
+which tries the port again. The field is optional, so a newer CLI still reads an older daemon.
+
+**Cost:** nothing retries on its own, so a port that frees up later stays unused until one of
+those, and the sender's message still cannot tell this case from a device that is asleep.

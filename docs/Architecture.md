@@ -95,7 +95,8 @@ The **peer listener** is a separate `WebApplication` on `0.0.0.0:<peerPort>` wit
 is the only LAN socket, it does not exist on a fresh install, and its route table contains only
 `/pair/*` and `/commands/*` — the loopback app's routes and origin check are simply absent
 (`DECISIONS.md` #26). Trust is checked twice: at the handshake against the current `trustedPeers`,
-and per route, because a pairing window has to admit unknown keys at the handshake.
+and per route, because a pairing window has to admit unknown keys at the handshake. If it cannot
+bind its port, the daemon runs on without it and `/health` says why (`DECISIONS.md` #36).
 
 `/commands/{name}` dispatches to `ICommandHandler`s registered as a DI collection; `SendFile` is
 the only one, and `HealthResponse.Capabilities` is projected from that set.

@@ -77,8 +77,9 @@ side only. The daemon's terminal logs every pairing step and every file received
 name — the first place to look when something fails.
 
 Ports: the CLI talks to `127.0.0.1:5533`; paired machines connect to each other on **5534/tcp**.
-If that is taken or blocked, set `LIGHTDROP_PEER_PORT` on that machine before starting the daemon
-— the other side learns the new port from discovery.
+`lightdrop health` shows whether this machine is accepting them (`receiving yes, on port 5534`),
+and if the port was taken, why not. Then set `LIGHTDROP_PEER_PORT` on that machine before
+starting the daemon — the other side learns the new port from discovery.
 
 ## Build and run from source
 
@@ -105,7 +106,7 @@ dotnet run --project src/LightDrop.Cli -- daemon    # run the daemon in the fore
 The daemon holds the terminal, so query it from a **second** terminal:
 
 ```bash
-dotnet run --project src/LightDrop.Cli -- health    # version, identity, capabilities
+dotnet run --project src/LightDrop.Cli -- health    # version, identity, whether it can receive
 dotnet run --project src/LightDrop.Cli -- peers     # nearby devices seen over mDNS
 ```
 

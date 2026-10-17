@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using LightDrop.Core.Configuration;
 using LightDrop.Core.Contracts;
 using LightDrop.Core.Pairing;
@@ -76,6 +78,80 @@ public sealed class PeerListenerTests(PairingKeys keys) : IClassFixture<PairingK
         var error = await started.Content.ReadFromJsonAsync(LightDropJsonContext.Default.ApiError);
         Assert.Contains(DaemonEndpointOptions.PeerPortEnvironmentVariable, error!.Error, StringComparison.Ordinal);
         Assert.Equal(PairingState.Failed, (await daemon.GetPairingAsync()).State);
+    }
+
+    // What /health says about the listener. A bind failure is not fatal, so besides one line in
+    // the daemon's log this is the only sign that paired devices cannot send here.
+
+    [Fact]
+    public async Task HealthSaysOffWhileNothingNeedsTheListener()
+    {
+        await using var daemon = await TestDaemon.StartAsync(DaemonId, "Desk PC");
+
+        var listener = (await daemon.GetHealthAsync()).PeerListener!;
+
+        Assert.Equal(PeerListenerState.Off, listener.State);
+        Assert.Equal(daemon.Endpoint.PeerPort, listener.Port);
+        Assert.Null(listener.Error);
+    }
+
+    [Fact]
+    public async Task HealthSaysListeningWhenAPeerIsPinned()
+    {
+        await using var daemon = await TestDaemon.StartAsync(DaemonId, "Desk PC", Bob);
+
+        var listener = (await daemon.GetHealthAsync()).PeerListener!;
+
+        Assert.Equal(PeerListenerState.Listening, listener.State);
+        Assert.Equal(daemon.Endpoint.PeerPort, listener.Port);
+        Assert.Null(listener.Error);
+
+        // A word on the wire, as Protocol.md documents it, not an enum's number.
+        Assert.Contains("\"Listening\"", await daemon.Api.GetStringAsync("health"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HealthSaysWhyTheListenerCouldNotStartWithTheDaemon()
+    {
+        // Peers pinned, so the daemon needs the listener at start, and the bind fails as in
+        // ABindFailureOtherThanPortInUseIsReportedNotFatal. The daemon runs on without receiving.
+        await using var daemon = await TestDaemon.StartAsync(DaemonId, "Desk PC", [Bob], clock: null, peerHost: "192.0.2.1");
+
+        var listener = (await daemon.GetHealthAsync()).PeerListener!;
+
+        Assert.Equal(PeerListenerState.Failed, listener.State);
+        Assert.Contains(DaemonEndpointOptions.PeerPortEnvironmentVariable, listener.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HealthSaysThePortIsTakenUntilALaterStartSucceeds()
+    {
+        // "Address in use" is the other way a bind fails -- Kestrel's own IOException rather than
+        // a raw SocketException -- and here it is a pairing window that needed the listener.
+        await using var daemon = await TestDaemon.StartAsync(DaemonId, "Desk PC");
+        daemon.Transport.Announce(StrangerId, "Mac Mini", address: "127.0.0.1");
+
+        using (var squatter = new TcpListener(IPAddress.Loopback, daemon.Endpoint.PeerPort))
+        {
+            squatter.Start();
+
+            using var refused = await daemon.StartPairingAsync("Mac Mini");
+            Assert.Equal(HttpStatusCode.InternalServerError, refused.StatusCode);
+
+            var failed = (await daemon.GetHealthAsync()).PeerListener!;
+            Assert.Equal(PeerListenerState.Failed, failed.State);
+            Assert.Contains(
+                daemon.Endpoint.PeerPort.ToString(CultureInfo.InvariantCulture), failed.Error, StringComparison.Ordinal);
+        }
+
+        using (var started = await daemon.StartPairingAsync("Mac Mini"))
+        {
+            Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        }
+
+        var listening = (await daemon.GetHealthAsync()).PeerListener!;
+        Assert.Equal(PeerListenerState.Listening, listening.State);
+        Assert.Null(listening.Error);
     }
 
     [Fact]

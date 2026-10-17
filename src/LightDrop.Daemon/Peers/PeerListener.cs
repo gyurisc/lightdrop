@@ -58,9 +58,36 @@ internal sealed class PeerListener(
     internal const long MaxRequestBodyBytes = 4096;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private WebApplication? _app;
+
+    // Written under the gate, read by /health without it; volatile, as in DiscoveryStatus.
+    private volatile WebApplication? _app;
+    private volatile string? _failure;
 
     private string Endpoint => $"{endpoint.PeerHost}:{endpoint.PeerPort}";
+
+    /// <summary>What <c>GET /health</c> reports about this listener.</summary>
+    /// <remarks>
+    /// The last failure is kept until a start succeeds, so a daemon that could not bind at start
+    /// still says why long after the one log line has scrolled away. A later successful start --
+    /// the next pairing window -- supersedes it.
+    /// </remarks>
+    public PeerListenerHealth Health
+    {
+        get
+        {
+            var running = _app is not null;
+            var failure = _failure;
+
+            return new PeerListenerHealth
+            {
+                State = running ? PeerListenerState.Listening
+                    : failure is not null ? PeerListenerState.Failed
+                    : PeerListenerState.Off,
+                Port = endpoint.PeerPort,
+                Error = running ? null : failure,
+            };
+        }
+    }
 
     /// <summary>Starts the listener if any peer is pinned. A failure is logged, not fatal.</summary>
     /// <remarks>
@@ -111,10 +138,18 @@ internal sealed class PeerListener(
                 // (common with WSL2 or Docker Desktop) is one, an address no interface holds is
                 // another. Rethrown as the one type both callers handle, naming the way out.
                 await app.DisposeAsync().ConfigureAwait(false);
-                throw new IOException(
+                var failure = new IOException(
                     $"Could not listen on {Endpoint}: {ex.Message}. Set {DaemonEndpointOptions.PeerPortEnvironmentVariable} " +
                     "to use a different port.",
                     ex);
+                _failure = failure.Message;
+                throw failure;
+            }
+            catch (IOException ex)
+            {
+                await app.DisposeAsync().ConfigureAwait(false);
+                _failure = ex.Message;
+                throw;
             }
             catch
             {

@@ -131,6 +131,9 @@ internal sealed class TestDaemon : IAsyncDisposable
         await App.Services.GetRequiredService<PeerListener>().EnsureStartedAsync(CancellationToken.None);
     }
 
+    public async Task<HealthResponse> GetHealthAsync() =>
+        (await Api.GetFromJsonAsync("health", LightDropJsonContext.Default.HealthResponse))!;
+
     /// <summary><c>POST /api/send</c>, as <c>lightdrop send</c> calls it.</summary>
     public Task<HttpResponseMessage> SendAsync(string path, string peer, Guid? transferId = null) =>
         Api.PostAsJsonAsync(

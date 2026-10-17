@@ -22,7 +22,8 @@ Liveness, identity, and everything a peer needs before it can talk to this devic
   "deviceId": "e5f6a7b8c9d0e1f2a3b4c5d6e7f80910",
   "deviceName": "Work Laptop",
   "platform": "windows",
-  "capabilities": ["SendFile"]
+  "capabilities": ["SendFile"],
+  "peerListener": { "state": "Listening", "port": 5534, "error": null }
 }
 ```
 
@@ -34,6 +35,7 @@ Liveness, identity, and everything a peer needs before it can talk to this devic
 | `deviceName` | Human-readable. How the CLI addresses peers. |
 | `platform` | `windows` \| `macos` \| `linux` \| `unknown`. A short stable token, not `RuntimeInformation.OSDescription`. |
 | `capabilities` | Commands this device accepts, projected from its registered handlers. Also the TXT `cap` key. |
+| `peerListener` | Whether paired devices can reach this one. `state` is `Off` (nothing paired, so no LAN socket), `Listening`, or `Failed`: the port could not be bound, the daemon runs on without receiving, and `error` says why. Absent from daemons before 2026-10-17. |
 
 Health stays a **plain HTTP GET**, not a command. It is the bootstrap probe: it must answer before any socket, pairing, or negotiation exists, and it keeps the daemon debuggable with `curl`.
 
@@ -302,6 +304,9 @@ pinned, or when a pairing window opens. Its handshake admits a client certificat
 is pinned in the current `trustedPeers` — or, while a window is open, any certificate, because the
 handshake is the only carrier of a new peer's key; after the window, the key that joined until the
 session's deadline. Its route table holds the peer routes and nothing from the loopback app.
+If its port cannot be bound, the daemon runs on without it, and `/health` reports
+`peerListener.state` `Failed` with the reason until a restart or the next pairing window starts it
+(`DECISIONS.md` #36).
 
 **The ceremony.** Both users run `lightdrop pair <peer>`. The lower device id listens, the higher
 dials. Bodies are JSON, capped at 4 KB; byte fields are base64.

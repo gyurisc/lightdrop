@@ -85,5 +85,32 @@ internal sealed class HealthCommand(IHttpClientFactory httpClientFactory, Daemon
         Console.WriteLine($"  capabilities  {(health.Capabilities.Count == 0
             ? "(none)"
             : string.Join(", ", health.Capabilities))}");
+
+        // Absent from a daemon older than the field; it simply has nothing to say.
+        if (health.PeerListener is { } listener)
+        {
+            PrintReceiving(listener);
+        }
+    }
+
+    private static void PrintReceiving(PeerListenerHealth listener)
+    {
+        switch (listener.State)
+        {
+            case PeerListenerState.Listening:
+                Console.WriteLine($"  receiving     yes, on port {listener.Port}");
+                break;
+
+            case PeerListenerState.Failed:
+                // The one state that needs action, and otherwise visible only in the daemon's log.
+                Console.WriteLine($"  receiving     NO: port {listener.Port} could not be opened, so paired devices cannot send here");
+                Console.WriteLine($"                {listener.Error}");
+                Console.WriteLine("                Restart the daemon once the port is free.");
+                break;
+
+            default:
+                Console.WriteLine($"  receiving     not yet: port {listener.Port} opens when you pair a device");
+                break;
+        }
     }
 }

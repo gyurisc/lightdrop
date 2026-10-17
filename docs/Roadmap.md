@@ -189,12 +189,13 @@ Started 2026-10-12: Mac Mini (Ethernet and Wi-Fi, published trimmed binary) and 
         listed ("may be offline or asleep"); 0.2 s once the Mini had dropped it ("paired but not on
         the network right now") (2026-10-13)
 
-**Known gap:** if the peer port cannot be bound when the daemon starts with peers already paired
-(another process holds it, or it falls in a Hyper-V excluded range on Windows), the daemon logs one
-warning and runs without receiving. Senders then see "could not send … may be offline". This is
-deliberate today (`PeerListenerTests.ABindFailureOtherThanPortInUseIsReportedNotFatal`): the daemon
-stays useful for sending. Making it visible in `lightdrop health`, or fatal while peers are pinned,
-is open. When testing, watch the daemon's output for that warning.
+**Known gap, now visible:** if the peer port cannot be bound when the daemon starts with peers
+already paired (another process holds it, or it falls in a Hyper-V excluded range on Windows), the
+daemon logs one error and runs without receiving. Senders then see "could not send … may be
+offline". Not fatal, deliberately: the daemon stays useful for sending (`DECISIONS.md` #36). Since
+2026-10-17 `lightdrop health` says so — `receiving NO: port 5534 could not be opened`, with the
+reason — until a restart or the next pairing window starts the listener. Verified on the Mini
+with a second daemon whose peer port the first one held. Nothing retries on its own.
 
 ## M4 — Persistent sessions
 

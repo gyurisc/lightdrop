@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace LightDrop.Core.Contracts;
 
 /// <summary>
@@ -35,4 +37,47 @@ public sealed record HealthResponse
     /// Derived from the registered command handlers; see <see cref="Commands.CommandCapabilities"/>.
     /// </summary>
     public required IReadOnlyList<string> Capabilities { get; init; }
+
+    /// <summary>
+    /// Whether paired devices can reach this one. Filled in by the daemon, which owns the peer
+    /// listener; <c>null</c> from a daemon older than this field, so a newer CLI still reads it.
+    /// </summary>
+    public PeerListenerHealth? PeerListener { get; init; }
+}
+
+/// <summary>The peer listener as <c>GET /health</c> reports it.</summary>
+/// <remarks>
+/// Exists because a listener that cannot bind its port is not fatal -- the daemon stays useful for
+/// sending -- so without this the only sign was one line in the daemon's log, and a sender's
+/// "may be offline" on the other device.
+/// </remarks>
+public sealed record PeerListenerHealth
+{
+    public required PeerListenerState State { get; init; }
+
+    /// <summary>The port it listens on, or would.</summary>
+    public required int Port { get; init; }
+
+    /// <summary>Why it could not start. Only with <see cref="PeerListenerState.Failed"/>.</summary>
+    public string? Error { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<PeerListenerState>))]
+public enum PeerListenerState
+{
+    /// <summary>
+    /// Not started, because nothing has needed it: no peer was pinned when the daemon started and
+    /// no pairing window has opened since. A fresh install has no LAN socket at all.
+    /// </summary>
+    Off,
+
+    /// <summary>Accepting connections from paired devices.</summary>
+    Listening,
+
+    /// <summary>
+    /// Needed but not running: the port could not be bound -- another process holds it, or on
+    /// Windows it falls in a Hyper-V excluded range. Paired devices cannot send to this one. A
+    /// restart, or the next pairing window, tries again.
+    /// </summary>
+    Failed,
 }
